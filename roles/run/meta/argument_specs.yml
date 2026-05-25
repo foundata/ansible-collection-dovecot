@@ -1,0 +1,417 @@
+# Role argument validation.
+#
+# See defaults/main.yml for details on each variable. For more information on
+# the argument_specs.yml format, refer to the official Ansible documentation:
+# https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_reuse_roles.html#role-argument-validation
+
+---
+
+argument_specs:
+
+  # foundata.dovecot/roles/run/tasks/main.yml entry point
+  main:
+    short_description: "Main entry point for the foundata.dovecot.run role"
+    options:
+
+      run_dovecot_state:
+        description: |
+          Determines whether the managed resources should be `present` or `absent`.
+
+          `present` ensures that required components, such as software packages, are
+          installed and configured.
+
+          `absent` reverts changes as much as possible, such as removing packages,
+          deleting created users, stopping services, restoring modified settings, …
+        type: "str"
+        default: "present"
+        choices:
+          - "present"
+          - "absent"
+
+      run_dovecot_autoupgrade:
+        description: |
+          If set to `true`, all managed packages will be upgraded during each Ansible
+          run (e.g., when the package provider detects a newer version than the
+          currently installed one).
+        type: "bool"
+        default: false
+
+      run_dovecot_service_state:
+        description: |
+          Defines the status of the service(s).
+
+          `enabled`: Service is running and will start automatically at boot.
+
+          `disabled`: Service is stopped and will not start automatically at boot.
+
+          `running`: Service is running but will not start automatically at boot.
+          This can be used to start a service on the first Ansible run without
+          enabling it for boot.
+
+          `unmanaged`: Service will not start at boot, and Ansible will not manage
+          its running state. This is primarily useful when services are monitored
+          and managed by systems other than Ansible.
+
+          The singular form (`service`) is used for simplicity. However, the defined
+          status applies to all services if multiple are being managed by this role.
+        type: "str"
+        default: "enabled"
+        choices:
+          - "enabled"
+          - "disabled"
+          - "running"
+          - "unmanaged"
+
+      run_dovecot_mail_user_manage:
+        description: |
+          Controls whether the role manages the system user and group that own
+          the mail storage tree (Dovecot's conventional "vmail" identity).
+
+          When set to `true`, the role creates the group defined by
+          `run_dovecot_mail_group_name` / `run_dovecot_mail_group_gid` and the
+          user defined by `run_dovecot_mail_user_name` / `run_dovecot_mail_user_uid`
+          (no login shell, no password), and ensures the directory at
+          `run_dovecot_mail_storage_path` exists with that ownership.
+
+          When set to `false`, the role assumes the user, group and storage
+          directory already exist (e.g. provisioned by another role, by your image,
+          or by a directory service such as LDAP/AD) and leaves them untouched.
+          You are then responsible for matching the UID/GID Dovecot expects.
+        type: "bool"
+        default: true
+
+      run_dovecot_mail_user_name:
+        description: |
+          Name of the POSIX user that owns Dovecot's mail storage tree.
+
+          Used both for `chown` on `run_dovecot_mail_storage_path` (when
+          `run_dovecot_mail_user_manage` is `true`) and as the canonical user name you
+          typically reference from `run_dovecot_settings` (e.g. as `mail_uid`,
+          `mail_gid`, in `service` blocks, in `unix_listener` owners).
+
+          The role does NOT inject this name into `run_dovecot_settings` for you,
+          keeping the mapping explicit avoids surprises.
+        type: "str"
+        default: "vmail"
+
+      run_dovecot_mail_user_uid:
+        description: |
+          Numeric UID for the user defined by `run_dovecot_mail_user_name`.
+
+          A fixed UID makes mail storage portable between hosts (rsync, restore from
+          backup, container migrations) without ownership rewrites. Pick a value that is
+          free across all hosts that may ever access the same mail spool.
+
+          Only takes effect when `run_dovecot_mail_user_manage` is `true`.
+        type: "int"
+        default: 1000
+
+      run_dovecot_mail_group_name:
+        description: |
+          Name of the POSIX group that owns Dovecot's mail storage tree.
+
+          See `run_dovecot_mail_user_name` for usage notes as the same applies
+          here for group ownership.
+        type: "str"
+        default: "vmail"
+
+      run_dovecot_mail_group_gid:
+        description: |
+          Numeric GID for the group defined by `run_dovecot_mail_group_name`.
+
+          See `run_dovecot_mail_user_uid` for the rationale on fixed numeric IDs.
+
+          Only takes effect when `run_dovecot_mail_user_manage` is `true`.
+        type: "int"
+        default: 1000
+
+      run_dovecot_mail_storage_path:
+        description: |
+          Absolute path to the root directory holding Dovecot's mail storage tree.
+
+          The role ensures the directory exists with ownership
+          `run_dovecot_mail_user_name`:`run_dovecot_mail_group_name` and mode
+          `0770`. Filesystem provisioning (partitioning, `mkfs`, mounts,
+          `/etc/fstab`) is explicitly out of scope for this role — mount whatever
+          backing storage you want at this path before running the role, or accept
+          that it lives on the root filesystem.
+
+          This path is not pushed into `run_dovecot_settings` automatically. Where
+          Dovecot needs to know it (e.g. `mail_path`, `mail_home`, namespace
+          `mail_path`, `auth_socket_path`, …), reference it explicitly in
+          `run_dovecot_settings`.
+        type: "path"
+        default: "/srv/vmail"
+
+      # Main Dovecot configuration, reasoning for the roles config var layout:
+      #
+      # The role owns /etc/dovecot/dovecot.conf in full and no `!include conf.d/*.conf`
+      # is used. Distribution conf.d/*.conf files remain on disk but dormant (a
+      # tombstone marker explains this to operators); see README.
+      #
+      # run_dovecot_settings holds the ENTIRE Dovecot configuration as one
+      # nested dictionary that mirrors Dovecot's own grammar. Default is `{}`
+      # (empty) ON PURPOSE. Even our other roles usually come with "batteries
+      # included, mail server configuration choices are diverse and  hard to
+      # change once a system is in production (like storage layout, namespace
+      # prefixes). Dovecot's own compiled-in defaults (which can be anchored by
+      # setting run_dovecot_settings['dovecot_config_version]) supply the floor
+      # for everything you don't set.
+      #
+      # Instead of role config defaults, we ship curated, opinionated,
+      # inline-commented configurations the collection's playbooks/ directory
+      # as well as in README examples.
+      #
+      # Two carve-outs that intentionally do NOT live in the run_dovecot_settings
+      # dict:
+      #
+      #   - run_dovecot_passdbs / run_dovecot_userdbs are dedicated ordered
+      #     lists. Dovecot's passdb/userdb blocks have no name attribute and
+      #     the order of the lookup chain matters. YAML dicts disallow
+      #     duplicate keys and do not guarantee order lists are the only
+      #     correct structure.
+      #   - run_dovecot_external_files is a separate container for file
+      #     artifacts Dovecot reads or runs that are NOT dovecot.conf itself.
+      #     They have their own parsers/semantics.
+      #
+      # FIXME check if the following comment is still true after we finished
+      #       the implementation:
+      # `mail_plugins` content (top-level and inside per-protocol blocks) is
+      # parsed by the role at task time and looked up in an internal plugin
+      # map to determine which distribution sub-packages to install. Unknown
+      # plugin names cause a hard fail listing the known names.
+      run_dovecot_settings:
+        description: |
+          Complete Dovecot configuration as a nested YAML dictionary that mirrors
+          Dovecot 2.4 grammar 1:1. The role renders it into a single
+          `/etc/dovecot/dovecot.conf` (so there are no `conf.d` includes).
+
+          Rules:
+
+          - Scalar value → `key = value`
+          - Dict value → `key { ... }` (recursive)
+          - List value → space-separated string (Dovecot's list syntax)
+          - Block name encoded inline in the YAML key, split on first
+            whitespace: `"service imap-login"`, `"namespace inbox"`,
+            `'unix_listener "/var/spool/postfix/private/auth"'`, `plugin:`
+            (anonymous).
+
+          The `dovecot_config_version` key (which Dovecot 2.4 REQUIRES) is always
+          emitted as the first non-comment line in `dovecot.conf`, regardless of
+          where it appears in your YAML. Set it (and `dovecot_storage_version`,
+          if you want to pin the on-disk storage format too) here like any other
+          setting.
+
+          Default is `{}` (empty) on purpose: the role ships zero opinionated
+          Dovecot defaults. Dovecot's compiled-in defaults supply everything you
+          do not set explicitly.
+
+          The `mail_plugins` setting (top-level and per `"protocol <name>":`
+          block) is parsed at task time to derive the set of distribution
+          sub-packages to install. Plugin names unknown to the role's internal
+          plugin map cause a hard fail with the list of known names.
+
+          Example (illustrative excerpt, NOT a default the role applies):
+
+          ```yaml
+          run_dovecot_settings:
+            dovecot_config_version: "2.4.3"
+            dovecot_storage_version: "2.4.3"
+
+            protocols: "imap lmtp sieve"
+            mail_plugins: "acl quota sieve"
+            disable_plaintext_auth: true
+            auth_mechanisms: "plain login"
+
+            "namespace inbox":
+              type: "private"
+              separator: "/"
+              prefix: ""
+              inbox: true
+              mail_driver: "maildir"
+              mail_path: "~/mail/data"
+              "mailbox Drafts":
+                auto: "subscribe"
+                special_use: '\Drafts'
+
+            "service imap-login":
+              "inet_listener imap":
+                port: 143
+              "inet_listener imaps":
+                port: 993
+                ssl: true
+
+            "service auth":
+              'unix_listener "/var/spool/postfix/private/auth"':
+                mode: "0660"
+                user: "postfix"
+                group: "postfix"
+
+            "protocol imap":
+              mail_plugins: "$mail_plugins imap_acl imap_quota"
+
+            plugin:
+              sieve: "file:~/sieve;active=~/sieve.active"
+              quota: "dict:User quota::file:%h/dovecot-quota"
+          ```
+
+          Reference for all Dovecot 2.4 settings and block types:
+          https://doc.dovecot.org/main/core/summaries/settings.html
+        type: "dict"
+        default: {}
+
+      run_dovecot_settings_block:
+        description: |
+          Raw verbatim Dovecot configuration appended at the end of
+          `/etc/dovecot/dovecot.conf` (before the trailing
+          `!include_try local.conf`).
+
+          This is an escape hatch of last resort for the rare case where the
+          `run_dovecot_settings` dictionary cannot express what you need
+          (e.g. exotic block forms that bypass the YAML-key encoding, or a
+          conditional include which was not known when the role was designed
+          or simply a yet missing feature role feature you can open an issue
+          for but need a solution *now*).
+
+          Prefer `run_dovecot_settings` whenever possible.
+
+          Default is `""` (empty string).
+        type: "str"
+        default: ""
+
+      run_dovecot_passdbs:
+        description: |
+          Ordered list of Dovecot `passdb { ... }` blocks (the password
+          database lookup chain). One block is rendered per list entry, in
+          declaration order — this is the authentication fallback chain
+          Dovecot evaluates top-to-bottom.
+
+          A dedicated list is required (instead of folding into
+          `run_dovecot_settings`) because `passdb` blocks have no name
+          attribute and ordering matters — properties YAML dictionaries
+          cannot guarantee.
+
+          Each entry is a dictionary whose key/value pairs are rendered as
+          `key = value` inside the block. The schema is intentionally loose;
+          common keys include:
+
+          - `driver` (required): backend type (`ldap`, `passwd-file`, `pam`,
+            `passwd`, `shadow`, `static`, …)
+          - `args`: backend-specific argument string (e.g. path to a
+            `.conf.ext` for LDAP, path to a passwd-file)
+          - `master`: `true` to mark this passdb as supplying master users
+          - `result_success`, `result_failure`, `result_internalfail`:
+            chain control (`return-ok`, `return-fail`, `continue`,
+            `continue-ok`, `continue-fail`)
+          - `default_fields`, `override_fields`, `mechanisms`, `username_filter`,
+            `auth_verbose`, …
+
+          Refer to https://doc.dovecot.org/main/core/config/auth/passdb.html
+          for the full list of fields and their semantics.
+
+          Example:
+
+          ```yaml
+          run_dovecot_passdbs:
+            - driver: "ldap"
+              args: "/etc/dovecot/dovecot-ldap.conf.ext"
+            - driver: "passwd-file"
+              args: "/etc/dovecot/master-users"
+              master: true
+              result_success: "continue"
+          ```
+        type: "list"
+        elements: "dict"
+        default: []
+
+      run_dovecot_userdbs:
+        description: |
+          Ordered list of Dovecot `userdb { ... }` blocks (the user database lookup
+          chain). One block is rendered per list entry, in declaration order.
+
+          Same rationale, structure and rendering as `run_dovecot_passdbs`, see there
+          for details. Common entry keys include `driver`, `args`, `default_fields`,
+          `override_fields`, `result_*`, ...
+
+          Refer to https://doc.dovecot.org/main/core/config/auth/userdb.html
+          for the full list of fields and their semantics.
+
+          Example:
+
+          ```yaml
+          run_dovecot_userdbs:
+            - driver: "ldap"
+              args: "/etc/dovecot/dovecot-ldap-userdb.conf.ext"
+            - driver: "static"
+              args: "uid=vmail gid=vmail home=/srv/vmail/%u"
+          ```
+        type: "list"
+        elements: "dict"
+        default: []
+
+      run_dovecot_external_files:
+        description: |
+          Container for file artifacts Dovecot reads or runs that are NOT `dovecot.conf`
+          itself. They have their own parsers or semantics (LDAP `.conf.ext` syntax,
+          passwd-file format, executable scripts, ...).
+
+          The presence of a top-level key means "manage this artifact"; an absent key
+          means "do not touch". Top-level keys are validated at task time against the
+          role's internal `__run_dovecot_external_files_known` set. unknown keys cause
+          a hard fail listing the supported names.
+
+          Known top-level keys:
+
+          - `ldap`: renders `dovecot-ldap.conf.ext` (and optionally a
+            parallel `dovecot-ldap-userdb.conf.ext` for split passdb/userdb
+            lookups). The LDAP file uses an alternate parser: no `!include`,
+            no `$variables`. Expected structure:
+
+            ```yaml
+            ldap:
+              settings:                       # raw key:value (LDAP parser syntax)
+                uris: "ldap://ldap.example.com:389"
+                tls: false
+                auth_bind: true
+                dn: "CN=svc,DC=example,DC=com"
+                dnpass: "..."                 # secret, keep e.g. in Ansible Vault
+                base: "OU=Users,DC=example,DC=com"
+                scope: "subtree"
+                user_filter: "(&(objectClass=user)(mail=%u))"
+                pass_filter: "(&(objectClass=user)(mail=%u))"
+                user_attrs: "..."
+                blocking: true
+              userdb_separate_file: true      # also render dovecot-ldap-userdb.conf.ext
+            ```
+
+          - `master_users`: renders the master-users passwd-file (path is
+            internal/OS-dependent). You supply the password hash; the role
+            does NOT hash for you. Use `doveadm pw -s BLF-CRYPT` or
+            `htpasswd -B` out of band.
+
+            ```yaml
+            master_users:
+              entries:
+                - username: "admin"
+                  password_hash: "{BLF-CRYPT}$2y$05$..."
+            ```
+
+          - `quota_warning_script`: renders a script Dovecot's
+            `service quota-warning { executable = script ... }` invokes
+            (mode `0755`, owner root).
+
+            ```yaml
+            quota_warning_script:
+              path: "/usr/local/bin/dovecot-quota-warning.sh"
+              from: "postmaster@example.com"
+              subject: "Quota warning (${PERCENT}% full)"
+              body: |
+                EN: Your mailbox is now ${PERCENT}% full.
+                DE: Ihr Postfach ist zu ${PERCENT}% belegt.
+            ```
+
+          Secrets contained in any of these artifacts (LDAP bind password,
+          master-user password hashes) are NOT specially handled by the role.
+          Keep them in Ansible Vault or another secret source.
+        type: "dict"
+        default: {}

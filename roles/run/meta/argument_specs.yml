@@ -188,9 +188,13 @@ argument_specs:
 
           Rules:
 
-          - Scalar value → `key = value`
-          - Dict value → `key { ... }` (recursive)
-          - List value → space-separated string (Dovecot's list syntax)
+          - Scalar value → `key = value`. For settings that take a list
+            (e.g. `protocols`, `mail_plugins`, `auth_mechanisms`) you can
+            pass either Dovecot's native space-separated string OR a YAML
+            list — the renderer joins YAML lists with a single space, so
+            `protocols: ["imap", "lmtp", "sieve"]` and
+            `protocols: "imap lmtp sieve"` render identically.
+          - Dict value → `key { ... }` (recursive).
           - Block name encoded inline in the YAML key, split on first
             whitespace: `"service imap-login"`, `"namespace inbox"`,
             `'unix_listener "/var/spool/postfix/private/auth"'`, `plugin:`
@@ -355,52 +359,34 @@ argument_specs:
           itself. They have their own parsers or semantics (LDAP `.conf.ext` syntax,
           passwd-file format, executable scripts, ...).
 
-          The presence of a top-level key means "manage this artifact"; an absent key
-          means "do not touch". Top-level keys are validated at task time against the
-          role's internal `__run_dovecot_external_files_known` set. unknown keys cause
-          a hard fail listing the supported names.
+          The presence of a top-level key means "manage this artifact"; an absent
+          key means "do not touch". Top-level keys are constrained to the closed
+          set declared as suboptions below, unknown keys are rejected by Ansible's
+          argument-spec validation at role start.
 
-          Known top-level keys:
 
-          - `ldap`: renders `dovecot-ldap.conf.ext` (and optionally a
-            parallel `dovecot-ldap-userdb.conf.ext` for split passdb/userdb
-            lookups). The LDAP file uses an alternate parser: no `!include`,
-            no `$variables`. Expected structure:
+          Example:
 
-            ```yaml
+          ```yaml
+          run_dovecot_external_files:
             ldap:
-              settings:                       # raw key:value (LDAP parser syntax)
+              settings:
                 uris: "ldap://ldap.example.com:389"
                 tls: false
                 auth_bind: true
                 dn: "CN=svc,DC=example,DC=com"
-                dnpass: "..."                 # secret, keep e.g. in Ansible Vault
+                dnpass: "{{ lookup('ansible.builtin.unvault', '...') | trim }}"
                 base: "OU=Users,DC=example,DC=com"
                 scope: "subtree"
                 user_filter: "(&(objectClass=user)(mail=%u))"
                 pass_filter: "(&(objectClass=user)(mail=%u))"
                 user_attrs: "..."
                 blocking: true
-              userdb_separate_file: true      # also render dovecot-ldap-userdb.conf.ext
-            ```
-
-          - `master_users`: renders the master-users passwd-file (path is
-            internal/OS-dependent). You supply the password hash; the role
-            does NOT hash for you. Use `doveadm pw -s BLF-CRYPT` or
-            `htpasswd -B` out of band.
-
-            ```yaml
+              userdb_separate_file: true
             master_users:
               entries:
                 - username: "admin"
                   password_hash: "{BLF-CRYPT}$2y$05$..."
-            ```
-
-          - `quota_warning_script`: renders a script Dovecot's
-            `service quota-warning { executable = script ... }` invokes
-            (mode `0755`, owner root).
-
-            ```yaml
             quota_warning_script:
               path: "/usr/local/bin/dovecot-quota-warning.sh"
               from: "postmaster@example.com"
@@ -408,10 +394,116 @@ argument_specs:
               body: |
                 EN: Your mailbox is now ${PERCENT}% full.
                 DE: Ihr Postfach ist zu ${PERCENT}% belegt.
-            ```
-
-          Secrets contained in any of these artifacts (LDAP bind password,
-          master-user password hashes) are NOT specially handled by the role.
-          Keep them in Ansible Vault or another secret source.
+          ```
         type: "dict"
         default: {}
+        options:
+
+          ldap:
+            description: |
+              Renders Dovecot's LDAP backend configuration into
+              `dovecot-ldap.conf.ext` (the exact path is OS-dependent and lives
+              in `vars/<platform>.yml`). The LDAP file uses Dovecot's alternate
+              parser: no `!include`, no `$variables`, raw `key = value` lines
+              only.
+
+              The file is typically referenced from `run_dovecot_passdbs` /
+              `run_dovecot_userdbs` via `args: "<path-to>/dovecot-ldap.conf.ext"`.
+              When `userdb_separate_file` is `true`, a sibling
+              `dovecot-ldap-userdb.conf.ext` is rendered as well to support
+              split passdb/userdb lookups.
+            type: "dict"
+            options:
+              settings:
+                description: |
+                  Raw key/value pairs written verbatim into `dovecot-ldap.conf.ext`.
+
+                  Keys are intentionally NOT enumerated by this role. Refer to
+                  https://doc.dovecot.org/main/core/config/auth/passdb_ldap.html
+                  for the full list of supported keys (`uris`, `dn`, `dnpass`,
+                  `base`, `scope`, `user_filter`, `pass_filter`, `user_attrs`,
+                  `auth_bind`, `tls`, `blocking`, ...).
+                type: "dict"
+              userdb_separate_file:
+                description: |
+                  When `true`, the role also renders a parallel
+                  `dovecot-ldap-userdb.conf.ext` (same `settings`) so that a
+                  separate `userdb { driver: ldap, args: <that-path> }` block
+                  can be configured. Useful when passdb and userdb queries
+                  need different filters/attributes or to keep them
+                  independently overridable.
+                type: "bool"
+                default: false
+
+          master_users:
+            description: |
+              Renders Dovecot's master-users passwd-file (path is OS-dependent
+              and lives in `vars/<platform>.yml`, since Debian and Red Hat use
+              different conventions). The file is consumed by a `passdb` entry
+              with `driver: passwd-file` and `master: true`.
+
+              The role does NOT hash passwords. Generate the hash out of band
+              with `doveadm pw -s BLF-CRYPT` (Dovecot's recommended scheme) or
+              `htpasswd -B` and place the resulting `{SCHEME}hash` string into
+              `password_hash`.
+            type: "dict"
+            options:
+              entries:
+                description: |
+                  List of master-user entries to write into the passwd-file.
+                  Each entry maps to one line in `username:{SCHEME}hash` form.
+                type: "list"
+                elements: "dict"
+                options:
+                  username:
+                    description: |
+                      Master-user login name. Authenticated as
+                      `<real-user>*<username>` against Dovecot per the master
+                      user convention.
+                    type: "str"
+                  password_hash:
+                    description: |
+                      Full Dovecot password string including the scheme prefix
+                      in curly braces, e.g. `{BLF-CRYPT}$2y$05$...`. The role
+                      writes the value verbatim; it does not hash or validate
+                      the scheme.
+
+                      Keep the value in Ansible Vault or another secret source
+                      — this field is NOT marked `no_log`.
+                    type: "str"
+
+          quota_warning_script:
+            description: |
+              Renders a script that Dovecot's
+              `"service quota-warning": { executable: "script <path>" ... }`
+              can invoke when a user crosses a configured quota threshold. The script is
+              deployed with mode `0755`, owner `root`, group `root`.
+
+              The script is independent of the `service quota-warning` block itself, you
+              still need to declare that service inside `run_dovecot_settings` and
+              reference this `path` from its `executable` setting.
+            type: "dict"
+            options:
+              path:
+                description: |
+                  Absolute path where the rendered script is written. The same path must
+                  be referenced from
+                  `run_dovecot_settings['service quota-warning']['executable']`
+                  (as `script <path>` value).
+                type: "path"
+              from:
+                description: |
+                  `From:` header used in the warning mail the script sends.
+                type: "str"
+              subject:
+                description: |
+                  `Subject:` header used in the warning mail. Dovecot's
+                  `${PERCENT}` placeholder is expanded by the script at
+                  runtime.
+                type: "str"
+              body:
+                description: |
+                  Message body of the warning mail. Multi-line strings are
+                  written verbatim; `${PERCENT}` placeholders are expanded
+                  by the script at runtime.
+                type: "str"

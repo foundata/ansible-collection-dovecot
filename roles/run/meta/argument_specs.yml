@@ -264,7 +264,7 @@ argument_specs:
         type: "dict"
         default: {}
 
-      run_dovecot_settings_block:
+      run_dovecot_settings_extra_content:
         description: |
           Raw verbatim Dovecot configuration appended at the end of
           `/etc/dovecot/dovecot.conf` (before the trailing

@@ -39,8 +39,24 @@ run_dovecot_autoupgrade: false
 # status applies to all services if multiple are being managed by this role.
 run_dovecot_service_state: "enabled"
 
+run_dovecot_mail_user_manage: true
 
-# FIXME Description of a very important example parameter. Do not forget to
-#       update meta/argument_specs.yml if you add new parameters.
-#
-# run_dovecot_example_parameter_variable: true
+run_dovecot_mail_user_name: "vmail"
+
+run_dovecot_mail_user_uid: 1000
+
+run_dovecot_mail_group_name: "vmail"
+
+run_dovecot_mail_group_gid: 1000
+
+run_dovecot_mail_storage_path: "/srv/vmail"
+
+run_dovecot_settings: {}
+
+run_dovecot_settings_extra_content: ""
+
+run_dovecot_passdbs: []
+
+run_dovecot_userdbs: []
+
+run_dovecot_external_files: {}

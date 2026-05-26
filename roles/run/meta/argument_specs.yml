@@ -357,19 +357,30 @@ argument_specs:
         description: |
           Container for file artifacts Dovecot reads or runs that are NOT `dovecot.conf`
           itself. They have their own parsers or semantics (LDAP `.conf.ext` syntax,
-          passwd-file format, executable scripts, ...).
+          passwd-file format, executable scripts, ...). You could create these files
+          with your own additional tasks (e.g. upfront, before calling the role), but
+          this variable exposes some handy helpers for commonly needed use cases.
 
-          The presence of a top-level key means "manage this artifact"; an absent
-          key means "do not touch". Top-level keys are constrained to the closed
-          set declared as suboptions below, unknown keys are rejected by Ansible's
-          argument-spec validation at role start.
+          Top-level keys are constrained to the closed set declared as suboptions
+          below — unknown keys are rejected by Ansible's argument-spec validation at
+          role start. For each known key, an `enabled` boolean controls the role's
+          behaviour:
 
+          - omitting the key entirely → the role ignores that artifact (the file
+            is neither created nor removed);
+          - declaring the key with `enabled: true` (the default when the key is
+            present) → the role renders/manages the file;
+          - declaring the key with `enabled: false` → the role removes the file
+            if it exists (handy for clean uninstall / staged migrations without
+            having to delete YAML around it).
 
           Example:
 
           ```yaml
           run_dovecot_external_files:
             ldap:
+              enabled: true
+              path: "/etc/dovecot/dovecot-ldap.conf.ext"   # role-default; can be omitted
               settings:
                 uris: "ldap://ldap.example.com:389"
                 tls: false
@@ -384,10 +395,13 @@ argument_specs:
                 blocking: true
               userdb_separate_file: true
             master_users:
+              enabled: true
+              path: "/etc/dovecot/passwd.masterusers"      # role-default; can be omitted
               entries:
                 - username: "admin"
                   password_hash: "{BLF-CRYPT}$2y$05$..."
             quota_warning_script:
+              enabled: true
               path: "/usr/local/bin/dovecot-quota-warning.sh"
               from: "postmaster@example.com"
               subject: "Quota warning (${PERCENT}% full)"
@@ -401,22 +415,41 @@ argument_specs:
 
           ldap:
             description: |
-              Renders Dovecot's LDAP backend configuration into
-              `dovecot-ldap.conf.ext` (the exact path is OS-dependent and lives
-              in `vars/<platform>.yml`). The LDAP file uses Dovecot's alternate
-              parser: no `!include`, no `$variables`, raw `key = value` lines
-              only.
+              Renders Dovecot's LDAP backend configuration into the file pointed to
+              by `path`. The LDAP file uses Dovecot's alternate parser: no
+              `!include`, no `$variables`, raw `key = value` lines only.
 
-              The file is typically referenced from `run_dovecot_passdbs` /
-              `run_dovecot_userdbs` via `args: "<path-to>/dovecot-ldap.conf.ext"`.
-              When `userdb_separate_file` is `true`, a sibling
-              `dovecot-ldap-userdb.conf.ext` is rendered as well to support
+              The rendered file is typically referenced from `run_dovecot_passdbs` /
+              `run_dovecot_userdbs` via `args: "<path>"`. When
+              `userdb_separate_file` is `true`, a sibling file is rendered next to
+              `path` with `-userdb` inserted before the extension (e.g.
+              `dovecot-ldap.conf.ext` → `dovecot-ldap-userdb.conf.ext`) to support
               split passdb/userdb lookups.
+
+              `enabled: false` removes the file (and, if applicable, the sibling
+              `*-userdb.conf.ext`) if present.
             type: "dict"
             options:
+              enabled:
+                description: |
+                  When `true` (the default), the role renders the file at `path`.
+                  When `false`, the role removes the file (and the sibling
+                  `*-userdb.conf.ext` if `userdb_separate_file: true`) if present.
+                type: "bool"
+                default: true
+              path:
+                description: |
+                  Absolute path where the rendered LDAP configuration is written.
+                  The same path must be referenced from the corresponding
+                  `run_dovecot_passdbs` / `run_dovecot_userdbs` entries via their
+                  `args` key. When `userdb_separate_file` is `true`, the sibling
+                  userdb file is written next to this path with `-userdb` inserted
+                  before its extension.
+                type: "str"
+                default: '/etc/dovecot/dovecot-ldap.conf.ext'
               settings:
                 description: |
-                  Raw key/value pairs written verbatim into `dovecot-ldap.conf.ext`.
+                  Raw key/value pairs written verbatim into the rendered file.
 
                   Keys are intentionally NOT enumerated by this role. Refer to
                   https://doc.dovecot.org/main/core/config/auth/passdb_ldap.html
@@ -427,9 +460,9 @@ argument_specs:
               userdb_separate_file:
                 description: |
                   When `true`, the role also renders a parallel
-                  `dovecot-ldap-userdb.conf.ext` (same `settings`) so that a
-                  separate `userdb { driver: ldap, args: <that-path> }` block
-                  can be configured. Useful when passdb and userdb queries
+                  `*-userdb.conf.ext` (same `settings`, name derived from `path`)
+                  so that a separate `userdb { driver: ldap, args: <that-path> }`
+                  block can be configured. Useful when passdb and userdb queries
                   need different filters/attributes or to keep them
                   independently overridable.
                 type: "bool"
@@ -437,17 +470,36 @@ argument_specs:
 
           master_users:
             description: |
-              Renders Dovecot's master-users passwd-file (path is OS-dependent
-              and lives in `vars/<platform>.yml`, since Debian and Red Hat use
-              different conventions). The file is consumed by a `passdb` entry
-              with `driver: passwd-file` and `master: true`.
+              Renders Dovecot's master-users passwd-file at `path`. The file is
+              consumed by a `passdb` entry with `driver: passwd-file` and
+              `master: true`.
 
-              The role does NOT hash passwords. Generate the hash out of band
-              with `doveadm pw -s BLF-CRYPT` (Dovecot's recommended scheme) or
-              `htpasswd -B` and place the resulting `{SCHEME}hash` string into
-              `password_hash`.
+              The role does NOT hash passwords. Generate the hash out of band with
+              `doveadm pw -s BLF-CRYPT` (Dovecot's recommended scheme) or `htpasswd -B`
+              and place the resulting `{SCHEME}hash` string into `password_hash`.
+
+              `enabled: false` removes the file if present.
             type: "dict"
             options:
+              enabled:
+                description: |
+                  When `true` (the default), the role renders the file at `path`.
+                  When `false`, the role removes the file if present.
+                type: "bool"
+                default: true
+              path:
+                description: |
+                  Absolute path where the rendered passwd-file is written. The
+                  same path must be referenced from a `run_dovecot_passdbs` entry
+                  using `driver: passwd-file`, `master: true`, `args: "<this path>"`.
+
+                  Conventions differ by distribution (Debian historically uses
+                  `/etc/dovecot/master-users`, RHEL/Fedora `/etc/dovecot/passwd.masterusers`);
+                  the role's per-platform `vars/<platform>.yml` overrides the
+                  default below to match the local convention. Override here only
+                  if you want a non-standard location.
+                type: "str"
+                default: '/etc/dovecot/passwd.masterusers'
               entries:
                 description: |
                   List of master-user entries to write into the passwd-file.
@@ -474,7 +526,7 @@ argument_specs:
 
           quota_warning_script:
             description: |
-              Renders a script that Dovecot's
+              Renders a shell script that Dovecot's
               `"service quota-warning": { executable: "script <path>" ... }`
               can invoke when a user crosses a configured quota threshold. The script is
               deployed with mode `0755`, owner `root`, group `root`.
@@ -482,8 +534,18 @@ argument_specs:
               The script is independent of the `service quota-warning` block itself, you
               still need to declare that service inside `run_dovecot_settings` and
               reference this `path` from its `executable` setting.
+
+              `enabled: false` removes the file if present (note: it does NOT remove
+              the corresponding `service quota-warning` block from
+              `run_dovecot_settings` — manage that explicitly there).
             type: "dict"
             options:
+              enabled:
+                description: |
+                  When `true` (the default), the role renders the script at `path`.
+                  When `false`, the role removes the file if present.
+                type: "bool"
+                default: true
               path:
                 description: |
                   Absolute path where the rendered script is written. The same path must
@@ -506,4 +568,8 @@ argument_specs:
                   Message body of the warning mail. Multi-line strings are
                   written verbatim; `${PERCENT}` placeholders are expanded
                   by the script at runtime.
+                default: |
+                  EN: Your mailbox is now ${PERCENT}% full.
+                  DE: Ihr Postfach ist zu ${PERCENT}% belegt.
+                  FR: Votre boîte est pleine à ${PERCENT}%
                 type: "str"

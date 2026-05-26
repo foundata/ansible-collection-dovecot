@@ -37,8 +37,9 @@
       ansible_facts['distribution_major_version'] is not ansible.builtin.defined or
       ((__run_dovecot_supported_platforms | ansible.builtin.length) == 0)
 
-
-- name: "Init | Warn when platform is unsupported"
+# Unlike our other Ansible roles, the role will fail on unsupported platforms. This is
+# intentional because Dovecot has specific requirements and version constraints.
+- name: "Init | Fail when platform is unsupported"
   ansible.builtin.fail:
     msg: >
       Neither {{ ansible_facts['distribution'] }} (distribution) nor {{ ansible_facts['os_family'] }} (os_family)
@@ -61,7 +62,6 @@
   when:
     - (__run_dovecot_supported_platforms | ansible.builtin.length) > 0
     - (__run_dovecot_matched_versions | ansible.builtin.length) == 0
-  ignore_errors: true # noqa: ignore-errors
 
 
 - name: "Init | Set platform-specific filename list (most to least specific; raw with possible duplicates)"

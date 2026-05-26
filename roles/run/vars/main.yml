@@ -25,22 +25,9 @@ __run_dovecot_used_facts:
 
 # List of platforms this role supports and was designed for.
 #
-# A warning will be issued if the list contains values and the role is executed
-# on an unknown (not listed) platform, but execution will continue. Example:
-#
-# - name: "Fedora" # A ansible_facts value ('distribution' or 'os_family')
-#   versions: # A ansible_facts value ('distribution_major_version' or
-#     - "all" # 'distribution_version') or "all"
-# - name: "Ubuntu"
-#   versions:
-#     - "22.04"
-#     - "24.04"
-# - name: "RedHat"
-#   versions:
-#     - "all"
-# - name: "Debian"
-#   versions:
-#     - "all"
+# Unlike our other Ansible roles, the role will fail if the list contains values
+# and the role is executed on an unknown (not listed) platform. This is
+# intentional because Dovecot has specific requirements and version constraints.
 __run_dovecot_supported_platforms:
   - name: "Debian"
     versions:

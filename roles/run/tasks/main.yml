@@ -1,0 +1,86 @@
+# Main entry point for the role.
+
+---
+
+- name: "Main | Include role initialization tasks"
+  ansible.builtin.include_tasks:
+    file: "{{ role_path }}/tasks/init.yml"
+    apply:
+      tags:
+        - "always"
+        - "run_dovecot_always"
+  tags:
+    - "always"
+    - "run_dovecot_always"
+
+
+- name: "Main | Include setup tasks (install): best platform matches (if any), then default"
+  ansible.builtin.include_tasks:
+    file: "{{ __run_dovecot_task_file }}"
+    apply:
+      tags:
+        - "run_dovecot_setup"
+  vars:
+    __run_dovecot_task_file: "{{ role_path }}/tasks/setup/install/{{ __run_dovecot_loop_item }}"
+  when:
+    - run_dovecot_state == 'present'
+    - __run_dovecot_task_file is ansible.builtin.file
+  loop: "{{ __run_dovecot_platform_filenames_most_specific_first + ['default.yml'] }}"
+  loop_control:
+    loop_var: "__run_dovecot_loop_item"
+  tags:
+    - "run_dovecot_setup"
+
+
+- name: "Main | Include configuration tasks: best platform matches (if any), then default"
+  ansible.builtin.include_tasks:
+    file: "{{ __run_dovecot_task_file }}"
+    apply:
+      tags:
+        - "run_dovecot_config"
+  vars:
+    __run_dovecot_task_file: "{{ role_path }}/tasks/config/{{ __run_dovecot_loop_item }}"
+  when:
+    - run_dovecot_state == 'present'
+    - __run_dovecot_task_file is ansible.builtin.file
+  loop: "{{ __run_dovecot_platform_filenames_most_specific_first + ['default.yml'] }}"
+  loop_control:
+    loop_var: "__run_dovecot_loop_item"
+  tags:
+    - "run_dovecot_config"
+
+
+- name: "Main | Include service or daemon management tasks: best platform matches (if any), then default"
+  ansible.builtin.include_tasks:
+    file: "{{ __run_dovecot_task_file }}"
+    apply:
+      tags:
+        - "run_dovecot_service"
+  vars:
+    __run_dovecot_task_file: "{{ role_path }}/tasks/service/{{ __run_dovecot_loop_item }}"
+  when:
+    - run_dovecot_state == 'present'
+    - __run_dovecot_task_file is ansible.builtin.file
+  loop: "{{ __run_dovecot_platform_filenames_most_specific_first + ['default.yml'] }}"
+  loop_control:
+    loop_var: "__run_dovecot_loop_item"
+  tags:
+    - "run_dovecot_service"
+
+
+- name: "Main | Include setup tasks (uninstall): best platform matches (if any), then default"
+  ansible.builtin.include_tasks:
+    file: "{{ __run_dovecot_task_file }}"
+    apply:
+      tags:
+        - "run_dovecot_setup"
+  vars:
+    __run_dovecot_task_file: "{{ role_path }}/tasks/setup/uninstall/{{ __run_dovecot_loop_item }}"
+  when:
+    - run_dovecot_state == 'absent'
+    - __run_dovecot_task_file is ansible.builtin.file
+  loop: "{{ __run_dovecot_platform_filenames_most_specific_first + ['default.yml'] }}"
+  loop_control:
+    loop_var: "__run_dovecot_loop_item"
+  tags:
+    - "run_dovecot_setup"

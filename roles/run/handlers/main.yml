@@ -2,4 +2,21 @@
 
 ---
 
-# none right now
+- name: "Handlers | Dovecot service restart"
+  ansible.builtin.systemd_service:
+    name: "{{ __run_dovecot_service_name }}"
+    state: "restarted"
+  when:
+    - run_dovecot_service_state != 'unmanaged'
+  listen:
+    - "run_dovecot: restart dovecot.service"
+
+
+- name: "Handlers | Dovecot service reload"
+  ansible.builtin.systemd_service:
+    name: "{{ __run_dovecot_service_name }}"
+    state: "reloaded"
+  when:
+    - run_dovecot_service_state != 'unmanaged'
+  listen:
+    - "run_dovecot: reload dovecot.service"

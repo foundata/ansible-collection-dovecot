@@ -1,0 +1,12 @@
+{# Return the deduplicated list of protocol tokens declared in
+   `run_dovecot_settings['protocols']`, normalising scalar vs. list input and
+   skipping `$variable` references and empty entries. Consumed by the
+   Ansible-side assertion that catches unknown protocol names. #}
+{% set raw = run_dovecot_settings['protocols'] | default([]) -%}
+{% set out = [] -%}
+{% if raw is iterable and raw is not string -%}
+{%   for p in raw %}{% set _ = out.append(p | string | trim) %}{% endfor -%}
+{% else -%}
+{%   for p in (raw | string | split) %}{% set _ = out.append(p | trim) %}{% endfor -%}
+{% endif -%}
+{{ out | reject('match', '^\s*$') | reject('match', '^\$') | unique | sort | list }}

@@ -1,0 +1,66 @@
+#!/usr/bin/env sh
+
+# {{ ansible_managed }}
+
+################################################################################
+# Script for "service quota-warning {}" (Dovecot)
+################################################################################
+
+
+################################################################################
+# Environment
+################################################################################
+
+PATH='/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin'
+LANG=en_US.UTF-8
+LC_ALL="en_US.UTF-8"
+set -u
+
+
+################################################################################
+# Command line arguments
+################################################################################
+
+PERCENT=$1
+USER=$2
+
+if ! printf '%s' "${PERCENT}" | grep -E -q -e '^[[:digit:]]{1,5}$' # quota might be over 100%
+then
+    printf 'First parameter (percent) has to be an integer between 0 and 99999.\n' 1>&2
+    exit 1
+fi
+if printf '%s' "${USER}" | grep -E -q -e '[\!#&()|;^`\{\}$"'']+'
+then
+    printf 'Invalid chars found in second parameter (user).\n' 1>&2
+    exit 1
+fi
+
+
+################################################################################
+# Process
+################################################################################
+
+# -o <Options>: overwrite the options to deliver the warning mail even if the
+# mailbox is completely full. Basically preserve your original "quota" setting
+# and insert ":noenforcing" to proper location
+# in it.
+cat << EOF | {{ __run_dovecot_dovecot_lda_exec_path }} -d "${USER}" -o "plugin/quota=dict:User quota::noenforcing:file:%h/dovecot-quota"
+From: {{ __run_dovecot_external_files_quota_warning_from }}
+Subject: {{ __run_dovecot_external_files_quota_warning_subject }}
+
+{{ __run_dovecot_external_files_quota_warning_body }}
+EOF
+
+# dovecot-lda will exit with one of the following values:
+# 0
+#     Delivery was successful. (EX_OK)
+# 64
+#     Invalid parameter given. (EX_USAGE)
+# 77
+#     -e option was used and mail was rejected. Typically this happens
+#        when user is over quota and quota_full_tempfail = no is configured.
+#        (EX_NOPERM)
+# 75
+#     A temporary failure. This is returned for almost all failures. See the
+#     log file (usually /var/log/mail.err) for details. (EX_TEMPFAIL)
+exit $?

@@ -1,0 +1,14 @@
+# {{ ansible managed }}
+
+# Dovecot master-users passwd-file
+#
+# Format: <username>:<{SCHEME}hash>
+#
+# Referenced from a
+# "passdb { driver = passwd-file; args = <this-path>; master = yes }"
+# block in dovecot.conf. Master users authenticate as
+# "<real-user>*<master-username>" per the Dovecot master user convention.
+
+{% for entry in (__run_dovecot_external_files_master_users_entries | default([])) -%}
+{{ entry['username'] }}:{{ entry['password_hash'] }}
+{% endfor -%}

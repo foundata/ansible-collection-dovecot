@@ -1,0 +1,57 @@
+{# Return the list of additional distribution packages to install on top of
+   `__run_dovecot_packages_install`, derived from the user's Dovecot settings.
+
+   Inputs scanned:
+     - run_dovecot_settings['protocols']                  → top-level protocols
+     - run_dovecot_settings['mail_plugins']               → top-level plugins
+     - run_dovecot_settings['protocol <name>']['mail_plugins']  → per-protocol plugins
+
+   Each protocol token is looked up in __run_dovecot_packages_protocols_map.
+   Each plugin token is looked up in __run_dovecot_packages_plugins_map.
+   Tokens not present in the respective map are silently skipped here —
+   validity is enforced separately by an Ansible-side assertion (see
+   tasks/config/default.yml).
+
+   Tokens beginning with `$` (e.g. `$mail_plugins`) are skipped as those are
+   Dovecot setting references, not literal plugin/protocol names.
+#}
+{% set protocols_raw = run_dovecot_settings['protocols'] | default([]) -%}
+{% set plugin_strings = [] -%}
+{% if run_dovecot_settings['mail_plugins'] is defined -%}
+{%   set _ = plugin_strings.append(run_dovecot_settings['mail_plugins']) -%}
+{% endif -%}
+{% for key, value in run_dovecot_settings.items() -%}
+{%   if (key is string) and (key.startswith('protocol ')) and (value is mapping) and (value['mail_plugins'] is defined) -%}
+{%     set _ = plugin_strings.append(value['mail_plugins']) -%}
+{%   endif -%}
+{% endfor -%}
+
+{% set protocols_list = [] -%}
+{% if protocols_raw is iterable and protocols_raw is not string -%}
+{%   for p in protocols_raw %}{% set _ = protocols_list.append(p | string | trim) %}{% endfor -%}
+{% else -%}
+{%   for p in (protocols_raw | string | split) %}{% set _ = protocols_list.append(p | trim) %}{% endfor -%}
+{% endif -%}
+
+{% set plugin_list = [] -%}
+{% for s in plugin_strings -%}
+{%   if s is iterable and s is not string -%}
+{%     for p in s %}{% set _ = plugin_list.append(p | string | trim) %}{% endfor -%}
+{%   else -%}
+{%     for p in (s | string | split) %}{% set _ = plugin_list.append(p | trim) %}{% endfor -%}
+{%   endif -%}
+{% endfor -%}
+
+{% set extras = [] -%}
+{% for p in (protocols_list | reject('match', '^\s*$') | reject('match', '^\$') | unique | list) -%}
+{%   if p in __run_dovecot_packages_protocols_map -%}
+{%     for pkg in __run_dovecot_packages_protocols_map[p] %}{% set _ = extras.append(pkg) %}{% endfor -%}
+{%   endif -%}
+{% endfor -%}
+{% for p in (plugin_list | reject('match', '^\s*$') | reject('match', '^\$') | unique | list) -%}
+{%   if p in __run_dovecot_packages_plugins_map -%}
+{%     for pkg in __run_dovecot_packages_plugins_map[p] %}{% set _ = extras.append(pkg) %}{% endfor -%}
+{%   endif -%}
+{% endfor -%}
+
+{{ extras | unique | sort | list }}

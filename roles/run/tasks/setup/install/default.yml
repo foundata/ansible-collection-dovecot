@@ -11,6 +11,18 @@
     - (__run_dovecot_packages_removal | ansible.builtin.length) > 0
 
 
+- name: "Setup | Install | Default | Validate declared protocols against the platform's protocol-to-package map"
+  ansible.builtin.assert:
+    that:
+      - (item in __run_dovecot_packages_protocols_map)
+    fail_msg: >-
+      Unknown protocol {{ item | ansible.builtin.to_json }} in
+      run_dovecot_settings['protocols']. Known protocols on this platform:
+      {{ __run_dovecot_packages_protocols_map.keys() | ansible.builtin.sort | ansible.builtin.list | ansible.builtin.to_json }}.
+    quiet: true
+  loop: "{{ lookup('template', 'helper_list_protocols.j2') }}"
+
+
 - name: "Setup | Install | Default | Install or upgrade packages"
   ansible.builtin.package:
     name: "{{ __run_dovecot_packages_install }}"
@@ -18,6 +30,22 @@
   when:
     - __run_dovecot_packages_install is ansible.builtin.defined
     - (__run_dovecot_packages_install | ansible.builtin.length) > 0
+  register: __run_dovecot_package_install_result # to decide if a handler flush (config/default.yml) is necessary
+
+
+- name: "Setup | Install | Default | Print additional packages (extracted from settings via protocol and plugin maps)"
+  ansible.builtin.debug:
+    msg: "{{ lookup('template', 'helper_list_extra_packages.j2') }}"
+    verbosity: 4
+
+
+- name: "Setup | Install | Default | Install or upgrade additional packages for declared protocols and plugins"
+  ansible.builtin.package:
+    name: "{{ lookup('template', 'helper_list_extra_packages.j2') }}"
+    state: "{{ 'latest' if run_dovecot_autoupgrade else 'present' }}"
+  when:
+    - (lookup('template', 'helper_list_extra_packages.j2') | ansible.builtin.length) > 0
+  register: __run_dovecot_package_install_extras_result # to decide if a handler flush (config/default.yml) is necessary
 
 
 - name: "Setup | Install | Default | Remove unwanted files and directories (e.g., to prevent conflicts or resolve incompatibilities)"
@@ -61,3 +89,71 @@
   loop: "{{ __run_dovecot_paths_neutralize | ansible.builtin.dict2items }}"
   loop_control:
     label: "{{ item['key'] }}"
+
+
+- name: "Setup | Install | Default | Manage mail storage POSIX group (vmail)"
+  ansible.builtin.group:
+    name: "{{ run_dovecot_mail_group_name }}"
+    gid: "{{ run_dovecot_mail_group_gid }}"
+    system: true
+    state: "present"
+  when:
+    - run_dovecot_mail_user_manage is ansible.builtin.true
+
+
+- name: "Setup | Install | Default | Manage mail storage POSIX user (vmail)"
+  ansible.builtin.user:
+    name: "{{ run_dovecot_mail_user_name }}"
+    uid: "{{ run_dovecot_mail_user_uid }}"
+    group: "{{ run_dovecot_mail_group_name }}"
+    home: "{{ run_dovecot_mail_storage_path }}"
+    create_home: false
+    shell: "/usr/sbin/nologin"
+    password: "!"
+    password_lock: true
+    system: true
+    state: "present"
+  when:
+    - run_dovecot_mail_user_manage is ansible.builtin.true
+
+
+- name: "Setup | Install | Default | Manage mail storage directory"
+  ansible.builtin.file:
+    path: "{{ run_dovecot_mail_storage_path }}"
+    state: "directory"
+    owner: "{{ run_dovecot_mail_user_name }}"
+    group: "{{ run_dovecot_mail_group_name }}"
+    mode: "u=rwx,g=rwx,o=" # 0770
+  when:
+    - run_dovecot_mail_user_manage is ansible.builtin.true
+
+
+- name: "Setup | Install | Default | Drop tombstone marker into the (now-dormant) conf.d directory"
+  ansible.builtin.copy:
+    dest: "{{ __run_dovecot_confd_tombstone_file_path }}"
+    content: |
+      Managed by Ansible (foundata.dovecot.run)
+
+      This directory and its *.conf files are intentionally left in place but
+      dormant. The role owns /etc/dovecot/dovecot.conf in full and does NOT
+      emit `!include conf.d/*.conf`, so nothing under this directory is read
+      by Dovecot at runtime.
+
+      Distribution-shipped snippets are kept on disk untouched so that:
+
+        - they remain available as reference documentation, and
+        - subsequent package upgrades do not break (some packages would
+          re-create deleted files anyway via `%config(noreplace)` or apt's
+          conffile machinery).
+
+      To verify what Dovecot is actually using, run:
+
+        doveconf -n
+
+      Site-local overrides go into /etc/dovecot/local.conf (which is
+      `!include_try`'d at the end of dovecot.conf), NOT into this directory.
+    owner: "root"
+    group: "root"
+    mode: "u=rw,g=r,o=r" # 0644
+  when:
+    - __run_dovecot_confd_dir_path is ansible.builtin.defined

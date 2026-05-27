@@ -2,10 +2,59 @@
 
 ---
 
-- name: "Setup | Uninstall | Remove packages"
+- name: "Setup | Uninstall | Default | Stop and disable service: {{ __run_dovecot_service_name }}"
+  ansible.builtin.service:
+    name: "{{ __run_dovecot_service_name }}"
+    state: "stopped"
+    enabled: false
+  failed_when: false # service may not exist anymore on partial uninstalls
+
+
+- name: "Setup | Uninstall | Default | Remove packages"
   ansible.builtin.package:
     name: "{{ __run_dovecot_packages_uninstall }}"
     state: "absent"
   when:
     - __run_dovecot_packages_uninstall is ansible.builtin.defined
     - (__run_dovecot_packages_uninstall | ansible.builtin.length) > 0
+
+
+- name: "Setup | Uninstall | Default | Remove role-managed configuration and external files"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: "absent"
+  loop:
+    - "{{ __run_dovecot_dovecotconf_file_path }}"
+    - "{{ __run_dovecot_confd_tombstone_file_path }}"
+
+
+# Mail storage directory (and its contents) is deliberately NOT removed on
+# uninstall: it almost always holds production user data. Operators who really
+# want it gone have to delete it themselves; we do not want to be the role that
+# wiped a mail spool on a state flip.
+- name: "Setup | Uninstall | Default | Inform that the mail storage directory is preserved"
+  ansible.builtin.debug:
+    msg: >-
+      The mail storage directory at {{ run_dovecot_mail_storage_path }} (and any
+      user data within it) is intentionally NOT removed. If you really want it
+      gone, delete it manually.
+  when:
+    - run_dovecot_mail_storage_path is ansible.builtin.defined
+
+
+- name: "Setup | Uninstall | Default | Remove mail storage POSIX user (vmail)"
+  ansible.builtin.user:
+    name: "{{ run_dovecot_mail_user_name }}"
+    state: "absent"
+    remove: false # never delete the mail spool home directory
+    force: false
+  when:
+    - run_dovecot_mail_user_manage is ansible.builtin.true
+
+
+- name: "Setup | Uninstall | Default | Remove mail storage POSIX group (vmail)"
+  ansible.builtin.group:
+    name: "{{ run_dovecot_mail_group_name }}"
+    state: "absent"
+  when:
+    - run_dovecot_mail_user_manage is ansible.builtin.true

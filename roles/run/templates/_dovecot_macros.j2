@@ -1,0 +1,66 @@
+{# Shared Jinja2 macros for rendering Dovecot 2.4 configuration.
+
+   Import with:
+     {% from '_dovecot_macros.j2' import render_settings, render_dbblocks %}
+
+   Conventions used here:
+   - Scalar value             → "key = value"
+   - Boolean value            → "key = yes" / "key = no" (Dovecot's spelling)
+   - YAML list value          → "key = item1 item2 ..." (single-space joined)
+   - YAML dict value          → "key { ... }" (recursive, two-space indent)
+   - Block name with spaces   → emitted verbatim as it appears in the YAML key
+                                (e.g. "service imap-login": → "service imap-login { ... }",
+                                'unix_listener "/path":' → "unix_listener "/path" { ... }").
+
+   The keys "dovecot_config_version" and "dovecot_storage_version" are skipped
+   wherever they appear so the top-level template can emit them first; this is
+   required by Dovecot 2.4 ("dovecot_config_version" MUST be the first
+   non-comment line in the file).
+#}
+{% macro render_settings(settings, indent_level=0) -%}
+{%-   set ns = namespace(out='') -%}
+{%-   set prefix = '  ' * indent_level -%}
+{%-   for key, value in settings.items() if key not in ['dovecot_config_version', 'dovecot_storage_version'] -%}
+{%-     if value is mapping -%}
+{%-       set ns.out = ns.out ~ prefix ~ key ~ ' {\n' -%}
+{%-       set ns.out = ns.out ~ render_settings(value, indent_level + 1) -%}
+{%-       set ns.out = ns.out ~ prefix ~ '}\n' -%}
+{%-     elif (value is iterable) and (value is not string) -%}
+{%-       set ns.out = ns.out ~ prefix ~ key ~ ' = ' ~ (value | map('string') | join(' ')) ~ '\n' -%}
+{%-     elif value is boolean -%}
+{%-       set ns.out = ns.out ~ prefix ~ key ~ ' = ' ~ ('yes' if value else 'no') ~ '\n' -%}
+{%-     elif value is none -%}
+{%-       set ns.out = ns.out ~ prefix ~ key ~ ' =\n' -%}
+{%-     else -%}
+{%-       set ns.out = ns.out ~ prefix ~ key ~ ' = ' ~ (value | string) ~ '\n' -%}
+{%-     endif -%}
+{%-   endfor -%}
+{{- ns.out -}}
+{%- endmacro %}
+
+
+{# Render a list of "passdb { ... }" or "userdb { ... }" blocks (the
+   authentication lookup chain). Pass "block_name" as the literal block kind
+   ("passdb" or "userdb"). Order is preserved as Dovecot evaluates these
+   top-to-bottom. #}
+{% macro render_dbblocks(blocks, block_name) -%}
+{%-   set ns = namespace(out='') -%}
+{%-   for block in blocks -%}
+{%-     set ns.out = ns.out ~ block_name ~ ' {\n' -%}
+{%-     for key, value in block.items() -%}
+{%-       if value is mapping -%}
+{%-         set ns.out = ns.out ~ '  ' ~ key ~ ' {\n' ~ render_settings(value, 2) ~ '  }\n' -%}
+{%-       elif (value is iterable) and (value is not string) -%}
+{%-         set ns.out = ns.out ~ '  ' ~ key ~ ' = ' ~ (value | map('string') | join(' ')) ~ '\n' -%}
+{%-       elif value is boolean -%}
+{%-         set ns.out = ns.out ~ '  ' ~ key ~ ' = ' ~ ('yes' if value else 'no') ~ '\n' -%}
+{%-       elif value is none -%}
+{%-         set ns.out = ns.out ~ '  ' ~ key ~ ' =\n' -%}
+{%-       else -%}
+{%-         set ns.out = ns.out ~ '  ' ~ key ~ ' = ' ~ (value | string) ~ '\n' -%}
+{%-       endif -%}
+{%-     endfor -%}
+{%-     set ns.out = ns.out ~ '}\n' -%}
+{%-   endfor -%}
+{{- ns.out -}}
+{%- endmacro %}

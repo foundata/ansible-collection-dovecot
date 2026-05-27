@@ -5,4 +5,67 @@
 
 ---
 
-# none right now
+# Debian (and Ubuntu) split Dovecot into many sub-packages. The base "metapkg"
+# "dovecot-core" ships the daemon, authentication and storage but no protocol
+# handler — those live in dedicated sub-packages and need to be installed
+# explicitly for each protocol the operator wants to serve.
+__run_dovecot_packages_install:
+  - "dovecot-core"
+
+
+# Debian-family places Dovecot's private helper executables (dovecot-lda,
+# dovecot-auth, etc.) under /usr/lib/dovecot/ rather than the Fedora/RHEL
+# /usr/libexec/dovecot/ used in vars/main.yml.
+__run_dovecot_dovecot_lda_exec_path: "/usr/lib/dovecot/dovecot-lda"
+
+
+__run_dovecot_packages_protocols_map:
+  imap:
+    - "dovecot-imapd"
+  lmtp:
+    - "dovecot-lmtpd"
+  pop3:
+    - "dovecot-pop3d"
+  submission:
+    - "dovecot-submissiond"
+  sieve:
+    - "dovecot-sieve"
+    - "dovecot-managesieved"
+
+
+__run_dovecot_packages_plugins_map:
+  acl: []
+  fts: []
+  fts_flatcurve:
+    - "dovecot-flatcurve"
+  fts_solr:
+    - "dovecot-solr"
+  fts_xapian:
+    - "dovecot-fts-xapian"
+  imap_acl: []
+  imap_filter_sieve:
+    - "dovecot-sieve"
+  imap_quota: []
+  imap_sieve:
+    - "dovecot-sieve"
+  last_login: []
+  listescape: []
+  mail_compress: []
+  mail_crypt: []
+  mail_lua:
+    - "dovecot-auth-lua"
+  mailbox_alias: []
+  notify: []
+  push_notification: []
+  push_notification_lua:
+    - "dovecot-auth-lua"
+  quota: []
+  quota_clone: []
+  sieve:
+    - "dovecot-sieve"
+    - "dovecot-managesieved"
+  sieve_extprograms:
+    - "dovecot-sieve"
+  trash: []
+  virtual: []
+  welcome: []

@@ -42,8 +42,65 @@ __run_dovecot_supported_platforms:
 
 
 # List of package names to be installed when run_dovecot_state is
-# set to "present".
-__run_dovecot_packages_install: []
+# set to "present". Per-platform overrides usually replace this list.
+__run_dovecot_packages_install:
+  - "dovecot"
+
+
+# Dictionary mapping Dovecot protocol names to additional package lists.
+#
+# Protocols listed in run_dovecot_settings['protocols'] (and per-protocol
+# blocks named "protocol <name>":) are looked up here at task time to derive
+# the set of distribution sub-packages to install. Per-platform overrides
+# replace this dictionary with platform-specific values. Protocols not in the
+# map cause a hard fail listing the known protocols.
+#
+# Keep in sync with __run_dovecot_packages_plugins_map for "sieve" — sieve
+# appears both as a protocol-like entry (the ManageSieve service) and as a
+# mail_plugin.
+__run_dovecot_packages_protocols_map:
+  imap: []
+  lmtp: []
+  pop3: []
+  submission: []
+  sieve: []
+
+
+# Dictionary mapping Dovecot mail_plugin names to additional package lists.
+#
+# Plugins listed in run_dovecot_settings['mail_plugins'] (and inside
+# "protocol <name>": blocks) are looked up here at task time to derive the
+# set of distribution sub-packages to install. Per-platform overrides replace
+# this dictionary with platform-specific values. Plugins not in the map are
+# silently ignored on the package-install side (Dovecot will still hard-fail
+# at start time if a plugin is genuinely unavailable, which is the more
+# actionable error for the operator).
+__run_dovecot_packages_plugins_map:
+  acl: []
+  fts: []
+  fts_flatcurve: []
+  fts_solr: []
+  fts_xapian: []
+  imap_acl: []
+  imap_filter_sieve: []
+  imap_quota: []
+  imap_sieve: []
+  last_login: []
+  listescape: []
+  mail_compress: []
+  mail_crypt: []
+  mail_lua: []
+  mailbox_alias: []
+  notify: []
+  push_notification: []
+  push_notification_lua: []
+  quota: []
+  quota_clone: []
+  sieve: []
+  sieve_extprograms: []
+  trash: []
+  virtual: []
+  welcome: []
 
 
 # List of package names to be uninstalled when run_dovecot_state is
@@ -53,7 +110,23 @@ __run_dovecot_packages_install: []
 # software. This is usually the case if there are common dependencies like
 # "curl" or "openssl" which typically should remain installed even after
 # uninstalling the software managed by this role.
-__run_dovecot_packages_uninstall: "{{ __run_dovecot_packages_install }}"
+#
+# By default this is the union of __run_dovecot_packages_install plus every
+# package listed under __run_dovecot_packages_protocols_map and
+# __run_dovecot_packages_plugins_map, so that a clean uninstall removes
+# everything the role might have installed in any configuration permutation.
+__run_dovecot_packages_uninstall: >-
+  {{
+    (__run_dovecot_packages_install
+     + (__run_dovecot_packages_protocols_map.values()
+        | ansible.builtin.flatten
+        | ansible.builtin.list)
+     + (__run_dovecot_packages_plugins_map.values()
+        | ansible.builtin.flatten
+        | ansible.builtin.list))
+    | ansible.builtin.unique
+    | ansible.builtin.list
+  }}
 
 
 # List of package names to be removed unconditionally before installation
@@ -75,6 +148,34 @@ __run_dovecot_paths_removal: []
 # configuration, while modified files are preserved. For example, RPM with
 # %config(noreplace) restores missing files but preserves modified ones.
 __run_dovecot_paths_neutralize: {}
+
+
+# Main Dovecot configuration file (dovecot.conf). The role owns this file in
+# full (no "!include conf.d/*.conf" is emitted) so any distribution-shipped
+# conf.d/*.conf files are left dormant on disk; a tombstone marker is dropped
+# alongside them to explain the situation to operators.
+__run_dovecot_dovecotconf_file_path: "/etc/dovecot/dovecot.conf"
+__run_dovecot_dovecotconf_file_owner: "root"
+__run_dovecot_dovecotconf_file_group: "root"
+__run_dovecot_dovecotconf_file_mode: "u=rw,g=r,o=r" # 0644
+
+# Directory holding distribution-shipped configuration snippets that the role
+# deliberately leaves dormant. A tombstone marker is placed there to explain
+# the situation to operators stumbling onto the leftovers.
+__run_dovecot_confd_dir_path: "/etc/dovecot/conf.d"
+__run_dovecot_confd_tombstone_file_path: "/etc/dovecot/conf.d/00-TOMBSTONE-ALL-FILES-HERE-IGNORED.README"
+
+
+# Daemon service name and paths of executables for management and validation.
+__run_dovecot_service_name: "dovecot.service"
+__run_dovecot_dovecot_exec_path: "/usr/sbin/dovecot"
+__run_dovecot_doveconf_exec_path: "/usr/bin/doveconf"
+__run_dovecot_doveadm_exec_path: "/usr/bin/doveadm"
+
+# Path to "dovecot-lda" (the local delivery agent). Used by the rendered
+# quota-warning script to inject the warning mail back into the user's
+# mailbox.
+__run_dovecot_dovecot_lda_exec_path: "/usr/libexec/dovecot/dovecot-lda"
 
 
 ### Override defaults of dependencies used by this role (if any).

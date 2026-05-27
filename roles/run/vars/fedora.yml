@@ -5,4 +5,52 @@
 
 ---
 
-# none right now
+# Fedora ships a single, batteries-included "dovecot" package containing the
+# daemon plus all built-in protocols (imap, pop3, lmtp, submission) and most
+# auth/storage modules (LDAP, GSSAPI, Lua, ...). The Pigeonhole project
+# (Sieve / ManageSieve) is the only commonly needed addition shipped as a
+# separate package; database backends ship as their own sub-packages.
+__run_dovecot_packages_install:
+  - "dovecot"
+
+
+__run_dovecot_packages_protocols_map:
+  imap: []
+  lmtp: []
+  pop3: []
+  submission: []
+  sieve:
+    - "dovecot-pigeonhole"
+
+
+__run_dovecot_packages_plugins_map:
+  acl: []
+  fts: []
+  fts_flatcurve: []
+  fts_solr: []
+  fts_xapian:
+    - "dovecot-fts-xapian"
+  imap_acl: []
+  imap_filter_sieve:
+    - "dovecot-pigeonhole"
+  imap_quota: []
+  imap_sieve:
+    - "dovecot-pigeonhole"
+  last_login: []
+  listescape: []
+  mail_compress: []
+  mail_crypt: []
+  mail_lua: []
+  mailbox_alias: []
+  notify: []
+  push_notification: []
+  push_notification_lua: []
+  quota: []
+  quota_clone: []
+  sieve:
+    - "dovecot-pigeonhole"
+  sieve_extprograms:
+    - "dovecot-pigeonhole"
+  trash: []
+  virtual: []
+  welcome: []

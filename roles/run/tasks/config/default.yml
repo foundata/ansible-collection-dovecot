@@ -2,4 +2,161 @@
 
 ---
 
-# none right now
+- name: "Config | Default | Render main configuration file ({{ __run_dovecot_dovecotconf_file_path }})"
+  ansible.builtin.template:
+    src: "dovecot.conf.j2"
+    dest: "{{ __run_dovecot_dovecotconf_file_path }}"
+    owner: "{{ __run_dovecot_dovecotconf_file_owner }}"
+    group: "{{ __run_dovecot_dovecotconf_file_group }}"
+    mode: "{{ __run_dovecot_dovecotconf_file_mode }}"
+    validate: "{{ __run_dovecot_doveconf_exec_path }} -c %s > /dev/null"
+  notify:
+    - "run_dovecot: restart dovecot.service"
+
+
+### External files: LDAP backend configuration (dovecot-ldap.conf.ext)
+
+- name: "Config | Default | External files | LDAP"
+  when:
+    - run_dovecot_external_files['ldap'] is ansible.builtin.defined
+  vars:
+    __run_dovecot_external_files_ldap_path: >-
+      {{ run_dovecot_external_files['ldap']['path']
+         | ansible.builtin.default('/etc/dovecot/dovecot-ldap.conf.ext', true) }}
+    __run_dovecot_external_files_ldap_userdb_path: >-
+      {{ (__run_dovecot_external_files_ldap_path | ansible.builtin.splitext)[0] ~ '-userdb'
+         ~ (__run_dovecot_external_files_ldap_path | ansible.builtin.splitext)[1] }}
+    __run_dovecot_external_files_ldap_settings: >-
+      {{ run_dovecot_external_files['ldap']['settings'] | ansible.builtin.default({}) }}
+    __run_dovecot_external_files_ldap_enabled: >-
+      {{ run_dovecot_external_files['ldap']['enabled'] | ansible.builtin.default(true) }}
+    __run_dovecot_external_files_ldap_userdb_separate: >-
+      {{ run_dovecot_external_files['ldap']['userdb_separate_file'] | ansible.builtin.default(false) }}
+  block:
+
+    - name: "Config | Default | External files | LDAP: Render configuration file"
+      ansible.builtin.template:
+        src: "dovecot-ldap.conf.ext.j2"
+        dest: "{{ __run_dovecot_external_files_ldap_path }}"
+        owner: "root"
+        group: "{{ run_dovecot_mail_group_name if run_dovecot_mail_user_manage else 'root' }}"
+        mode: "u=rw,g=r,o=" # 0640, may contain bind credentials
+      when:
+        - __run_dovecot_external_files_ldap_enabled | ansible.builtin.bool
+      notify:
+        - "run_dovecot: restart dovecot.service"
+
+    - name: "Config | Default | External files | LDAP: Render sibling userdb file"
+      ansible.builtin.template:
+        src: "dovecot-ldap.conf.ext.j2"
+        dest: "{{ __run_dovecot_external_files_ldap_userdb_path }}"
+        owner: "root"
+        group: "{{ run_dovecot_mail_group_name if run_dovecot_mail_user_manage else 'root' }}"
+        mode: "u=rw,g=r,o=" # 0640, may contain bind credentials
+      when:
+        - __run_dovecot_external_files_ldap_enabled | ansible.builtin.bool
+        - __run_dovecot_external_files_ldap_userdb_separate | ansible.builtin.bool
+      notify:
+        - "run_dovecot: restart dovecot.service"
+
+    - name: "Config | Default | External files | LDAP: Remove configuration file (disabled)"
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: "absent"
+      when:
+        - not (__run_dovecot_external_files_ldap_enabled | ansible.builtin.bool)
+      loop:
+        - "{{ __run_dovecot_external_files_ldap_path }}"
+        - "{{ __run_dovecot_external_files_ldap_userdb_path }}"
+      notify:
+        - "run_dovecot: restart dovecot.service"
+
+
+### External files: Master users passwd-file
+
+- name: "Config | Default | External files | Master users"
+  when:
+    - run_dovecot_external_files['master_users'] is ansible.builtin.defined
+  vars:
+    __run_dovecot_external_files_master_users_path: >-
+      {{ run_dovecot_external_files['master_users']['path']
+         | ansible.builtin.default('/etc/dovecot/passwd.masterusers', true) }}
+    __run_dovecot_external_files_master_users_entries: >-
+      {{ run_dovecot_external_files['master_users']['entries'] | ansible.builtin.default([]) }}
+    __run_dovecot_external_files_master_users_enabled: >-
+      {{ run_dovecot_external_files['master_users']['enabled'] | ansible.builtin.default(true) }}
+  block:
+
+    - name: "Config | Default | External files | Master users: Render passwd-file"
+      ansible.builtin.template:
+        src: "master-users.j2"
+        dest: "{{ __run_dovecot_external_files_master_users_path }}"
+        owner: "root"
+        group: "{{ run_dovecot_mail_group_name if run_dovecot_mail_user_manage else 'root' }}"
+        mode: "u=rw,g=r,o=" # 0640, contains password hashes
+      when:
+        - __run_dovecot_external_files_master_users_enabled | ansible.builtin.bool
+      notify:
+        - "run_dovecot: restart dovecot.service"
+
+    - name: "Config | Default | External files | Master users: Remove passwd-file (disabled)"
+      ansible.builtin.file:
+        path: "{{ __run_dovecot_external_files_master_users_path }}"
+        state: "absent"
+      when:
+        - not (__run_dovecot_external_files_master_users_enabled | ansible.builtin.bool)
+      notify:
+        - "run_dovecot: restart dovecot.service"
+
+
+### External files: Quota-warning script
+
+- name: "Config | Default | External files | Quota-warning script"
+  when:
+    - run_dovecot_external_files['quota_warning_script'] is ansible.builtin.defined
+  vars:
+    __run_dovecot_external_files_quota_warning_path: >-
+      {{ run_dovecot_external_files['quota_warning_script']['path']
+         | ansible.builtin.default('/usr/local/bin/dovecot-quota-warning.sh', true) }}
+    __run_dovecot_external_files_quota_warning_from: >-
+      {{ run_dovecot_external_files['quota_warning_script']['from'] | ansible.builtin.default('postmaster') }}
+    __run_dovecot_external_files_quota_warning_subject: >-
+      {{ run_dovecot_external_files['quota_warning_script']['subject']
+         | ansible.builtin.default('Quota warning (${PERCENT}% full)') }}
+    __run_dovecot_external_files_quota_warning_body: >-
+      {{ run_dovecot_external_files['quota_warning_script']['body']
+         | ansible.builtin.default(__run_dovecot_external_files_quota_warning_body_default, true) }}
+    __run_dovecot_external_files_quota_warning_body_default: |
+      EN: Your mailbox is now ${PERCENT}% full.
+      DE: Ihr Postfach ist zu ${PERCENT}% belegt.
+      FR: Votre boîte est pleine à ${PERCENT}%
+    __run_dovecot_external_files_quota_warning_enabled: >-
+      {{ run_dovecot_external_files['quota_warning_script']['enabled'] | ansible.builtin.default(true) }}
+  block:
+
+    - name: "Config | Default | External files | Quota-warning script: Render script"
+      ansible.builtin.template:
+        src: "dovecot-quota-warning.sh.j2"
+        dest: "{{ __run_dovecot_external_files_quota_warning_path }}"
+        owner: "root"
+        group: "root"
+        mode: "u=rwx,g=rx,o=rx" # 0755
+      when:
+        - __run_dovecot_external_files_quota_warning_enabled | ansible.builtin.bool
+
+    - name: "Config | Default | External files | Quota-warning script: Remove script (disabled)"
+      ansible.builtin.file:
+        path: "{{ __run_dovecot_external_files_quota_warning_path }}"
+        state: "absent"
+      when:
+        - not (__run_dovecot_external_files_quota_warning_enabled | ansible.builtin.bool)
+
+
+- name: "Config | Default | Ensure handler runs (e.g. config validation/reload) before (re)starting Dovecot after packages were installed"
+  ansible.builtin.meta: "flush_handlers"
+  when:
+    - run_dovecot_service_state in ['enabled', 'running']
+    - (__run_dovecot_package_install_result is ansible.builtin.defined and
+       __run_dovecot_package_install_result is ansible.builtin.changed) or
+      (__run_dovecot_package_install_extras_result is ansible.builtin.defined and
+       __run_dovecot_package_install_extras_result is ansible.builtin.changed)

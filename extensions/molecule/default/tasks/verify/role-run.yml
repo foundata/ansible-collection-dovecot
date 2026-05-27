@@ -1,0 +1,330 @@
+# Check collection role "run" outcomes.
+
+- name: "Molecule | Verify | Initialize the foundata.dovecot.run role (without actually running it; get and expose variables)"
+  ansible.builtin.include_role:
+    name: "foundata.dovecot.run"
+    tasks_from: "init"
+    public: true
+
+
+## Preparation
+
+- name: "Molecule | Verify | Set run_dovecot_* and __testing_* parameters as facts from __testing_state"
+  ansible.builtin.set_fact:
+    "{{ item['key'] }}": "{{ item['value'] }}"
+  loop: >-
+    {{
+      (__testing_state | default({}, true))
+      | ansible.builtin.dict2items
+      | ansible.builtin.selectattr('key', 'match', '^(run_dovecot_|__testing_)')
+      | ansible.builtin.list
+    }}
+
+
+## Service state
+
+- name: "Molecule | Verify | Gather service facts"
+  ansible.builtin.service_facts:
+
+- name: "Molecule | Verify | Show service facts"
+  ansible.builtin.debug:
+    var: ansible_facts['services'][__run_dovecot_service_name] | ansible.builtin.default({})
+    verbosity: 3
+
+
+- name: "Molecule | Verify | Assert Dovecot service is running"
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['services'][__run_dovecot_service_name] is ansible.builtin.defined
+      - ansible_facts['services'][__run_dovecot_service_name]['state'] == 'running'
+    fail_msg: "Dovecot service '{{ __run_dovecot_service_name }}' is not running."
+    success_msg: "Dovecot service '{{ __run_dovecot_service_name }}' is running."
+
+
+## Base package
+
+- name: "Molecule | Verify | Gather package facts"
+  ansible.builtin.package_facts:
+    manager: "auto"
+
+- name: "Molecule | Verify | Assert the platform base package is installed"
+  ansible.builtin.assert:
+    that:
+      - item in ansible_facts['packages']
+    fail_msg: "Expected base package '{{ item }}' is not installed."
+    success_msg: "Base package '{{ item }}' is installed."
+  loop: "{{ __run_dovecot_packages_install }}"
+
+
+## Protocol-extras package install path
+
+- name: "Molecule | Verify | Assert the per-platform sieve protocol extras are installed (Debian)"
+  ansible.builtin.assert:
+    that:
+      - "'dovecot-imapd' in ansible_facts['packages']"
+      - "'dovecot-lmtpd' in ansible_facts['packages']"
+      - "'dovecot-sieve' in ansible_facts['packages']"
+      - "'dovecot-managesieved' in ansible_facts['packages']"
+    fail_msg: >-
+      Expected protocol-extra Dovecot packages are missing on Debian/Ubuntu. The
+      'protocols = imap lmtp sieve' setting should pull in dovecot-imapd,
+      dovecot-lmtpd, dovecot-sieve and dovecot-managesieved.
+    success_msg: "All Debian/Ubuntu protocol-extra packages are installed as expected."
+  when:
+    - (ansible_facts['os_family'] | ansible.builtin.lower) == 'debian'
+
+
+- name: "Molecule | Verify | Assert the per-platform sieve protocol extras are installed (Fedora/RHEL)"
+  ansible.builtin.assert:
+    that:
+      - "'dovecot-pigeonhole' in ansible_facts['packages']"
+    fail_msg: >-
+      Expected protocol-extra package 'dovecot-pigeonhole' is missing on
+      Fedora/RHEL. The 'protocols = imap lmtp sieve' setting should pull it in.
+    success_msg: "dovecot-pigeonhole is installed on Fedora/RHEL as expected."
+  when:
+    - (ansible_facts['os_family'] | ansible.builtin.lower) == 'redhat'
+
+
+## Mail identity (vmail user/group)
+
+- name: "Molecule | Verify | Look up the managed mail group"
+  ansible.builtin.getent:
+    database: "group"
+    key: "{{ run_dovecot_mail_group_name }}"
+
+
+- name: "Molecule | Verify | Assert the managed mail group has the expected GID"
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['getent_group'][run_dovecot_mail_group_name][1] | int == run_dovecot_mail_group_gid | int
+    fail_msg: >-
+      Mail group '{{ run_dovecot_mail_group_name }}' GID is
+      '{{ ansible_facts['getent_group'][run_dovecot_mail_group_name][1] }}', expected
+      '{{ run_dovecot_mail_group_gid }}'.
+    success_msg: "Mail group '{{ run_dovecot_mail_group_name }}' has GID {{ run_dovecot_mail_group_gid }}."
+
+
+- name: "Molecule | Verify | Look up the managed mail user"
+  ansible.builtin.getent:
+    database: "passwd"
+    key: "{{ run_dovecot_mail_user_name }}"
+
+
+- name: "Molecule | Verify | Assert the managed mail user has the expected UID and home"
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['getent_passwd'][run_dovecot_mail_user_name][1] | int == run_dovecot_mail_user_uid | int
+      - ansible_facts['getent_passwd'][run_dovecot_mail_user_name][4] == run_dovecot_mail_storage_path
+    fail_msg: >-
+      Mail user '{{ run_dovecot_mail_user_name }}' has unexpected UID or home:
+      {{ ansible_facts['getent_passwd'][run_dovecot_mail_user_name] }}
+    success_msg: >-
+      Mail user '{{ run_dovecot_mail_user_name }}' has UID {{ run_dovecot_mail_user_uid }}
+      and home '{{ run_dovecot_mail_storage_path }}'.
+
+
+## Mail storage directory
+
+- name: "Molecule | Verify | Stat the mail storage directory"
+  ansible.builtin.stat:
+    path: "{{ run_dovecot_mail_storage_path }}"
+  register: __testing_mail_storage_stat
+
+
+- name: "Molecule | Verify | Assert mail storage directory exists with the right ownership and mode"
+  ansible.builtin.assert:
+    that:
+      - __testing_mail_storage_stat['stat']['exists']
+      - __testing_mail_storage_stat['stat']['isdir']
+      - __testing_mail_storage_stat['stat']['pw_name'] == run_dovecot_mail_user_name
+      - __testing_mail_storage_stat['stat']['gr_name'] == run_dovecot_mail_group_name
+      - __testing_mail_storage_stat['stat']['mode'] == '0770'
+    fail_msg: >-
+      Mail storage directory '{{ run_dovecot_mail_storage_path }}' has unexpected state:
+      {{ __testing_mail_storage_stat['stat'] | ansible.builtin.default({}) }}
+    success_msg: >-
+      Mail storage directory '{{ run_dovecot_mail_storage_path }}' is a directory owned by
+      '{{ run_dovecot_mail_user_name }}:{{ run_dovecot_mail_group_name }}' with mode 0770.
+
+
+## Main configuration
+
+- name: "Molecule | Verify | Stat dovecot.conf"
+  ansible.builtin.stat:
+    path: "{{ __run_dovecot_dovecotconf_file_path }}"
+  register: __testing_dovecotconf_stat
+
+
+- name: "Molecule | Verify | Assert dovecot.conf exists with expected ownership/mode"
+  ansible.builtin.assert:
+    that:
+      - __testing_dovecotconf_stat['stat']['exists']
+      - __testing_dovecotconf_stat['stat']['pw_name'] == __run_dovecot_dovecotconf_file_owner
+      - __testing_dovecotconf_stat['stat']['gr_name'] == __run_dovecot_dovecotconf_file_group
+    fail_msg: >-
+      The dovecot.conf at '{{ __run_dovecot_dovecotconf_file_path }}' is missing or has unexpected ownership.
+      Stat: {{ __testing_dovecotconf_stat['stat'] | ansible.builtin.default({}) }}
+    success_msg: "The dovecot.conf at '{{ __run_dovecot_dovecotconf_file_path }}' exists with expected ownership."
+
+
+- name: "Molecule | Verify | Read dovecot.conf content"
+  ansible.builtin.slurp:
+    src: "{{ __run_dovecot_dovecotconf_file_path }}"
+  register: __testing_dovecotconf_content
+
+
+- name: "Molecule | Verify | Set dovecot.conf content as fact"
+  ansible.builtin.set_fact:
+    __testing_dovecotconf_decoded: >-
+      {{ __testing_dovecotconf_content['content'] | ansible.builtin.b64decode }}
+
+
+- name: "Molecule | Verify | Assert dovecot.conf contains expected directives"
+  ansible.builtin.assert:
+    that:
+      # dovecot_config_version must be emitted before anything else
+      - "'dovecot_config_version = 2.4.0' in __testing_dovecotconf_decoded"
+      # scalar/string/list value branches
+      - "'protocols = imap lmtp sieve' in __testing_dovecotconf_decoded"
+      - "'auth_mechanisms = plain login' in __testing_dovecotconf_decoded"
+      - "'mail_plugins = quota' in __testing_dovecotconf_decoded"
+      # nested block rendering
+      - "'namespace inbox {' in __testing_dovecotconf_decoded"
+      - "'mailbox Drafts {' in __testing_dovecotconf_decoded"
+      - "'service imap-login {' in __testing_dovecotconf_decoded"
+      - "'inet_listener imap {' in __testing_dovecotconf_decoded"
+      - "'service lmtp {' in __testing_dovecotconf_decoded"
+      - "'unix_listener lmtp {' in __testing_dovecotconf_decoded"
+      - "'protocol imap {' in __testing_dovecotconf_decoded"
+      # passdb/userdb blocks
+      - "'passdb {' in __testing_dovecotconf_decoded"
+      - "'driver = static' in __testing_dovecotconf_decoded"
+      - "'userdb {' in __testing_dovecotconf_decoded"
+      # verbatim escape-hatch content was appended
+      - "'foundata.dovecot.run: molecule escape-hatch marker' in __testing_dovecotconf_decoded"
+      # the final include_try line is present
+      - "'!include_try local.conf' in __testing_dovecotconf_decoded"
+    fail_msg: >-
+      The rendered dovecot.conf is missing expected directives. Content:
+      {{ __testing_dovecotconf_decoded }}
+    success_msg: "The rendered dovecot.conf contains all expected directives."
+
+
+## Tombstone marker in conf.d/
+
+- name: "Molecule | Verify | Stat the conf.d tombstone file"
+  ansible.builtin.stat:
+    path: "{{ __run_dovecot_confd_tombstone_file_path }}"
+  register: __testing_tombstone_stat
+
+
+- name: "Molecule | Verify | Assert the conf.d tombstone file exists"
+  ansible.builtin.assert:
+    that:
+      - __testing_tombstone_stat['stat']['exists']
+      - not __testing_tombstone_stat['stat']['isdir']
+    fail_msg: "The conf.d tombstone file at '{{ __run_dovecot_confd_tombstone_file_path }}' is missing."
+    success_msg: "The conf.d tombstone file at '{{ __run_dovecot_confd_tombstone_file_path }}' exists."
+
+
+## External files: master users
+
+- name: "Molecule | Verify | Stat the master-users passwd-file"
+  ansible.builtin.stat:
+    path: "/etc/dovecot/passwd.masterusers"
+  register: __testing_masterusers_stat
+
+
+- name: "Molecule | Verify | Assert the master-users passwd-file exists"
+  ansible.builtin.assert:
+    that:
+      - __testing_masterusers_stat['stat']['exists']
+      - __testing_masterusers_stat['stat']['mode'] == '0640'
+    fail_msg: >-
+      The master-users passwd-file is missing or has unexpected mode:
+      {{ __testing_masterusers_stat['stat'] | ansible.builtin.default({}) }}
+    success_msg: "The master-users passwd-file at '/etc/dovecot/passwd.masterusers' exists with mode 0640."
+
+
+- name: "Molecule | Verify | Read master-users passwd-file content"
+  ansible.builtin.slurp:
+    src: "/etc/dovecot/passwd.masterusers"
+  register: __testing_masterusers_content
+
+
+- name: "Molecule | Verify | Assert master-users passwd-file contains the expected entry"
+  ansible.builtin.assert:
+    that:
+      - "'admin:{PLAIN}molecule-test-only' in (__testing_masterusers_content['content'] | ansible.builtin.b64decode)"
+    fail_msg: >-
+      The master-users passwd-file does not contain the expected entry. Content:
+      {{ __testing_masterusers_content['content'] | ansible.builtin.b64decode }}
+    success_msg: "The master-users passwd-file contains the expected entry for 'admin'."
+
+
+## External files: quota-warning script
+
+- name: "Molecule | Verify | Stat the quota-warning script"
+  ansible.builtin.stat:
+    path: "/usr/local/bin/dovecot-quota-warning.sh"
+  register: __testing_quotawarning_stat
+
+
+- name: "Molecule | Verify | Assert the quota-warning script exists, is executable, and references the platform dovecot-lda path"
+  ansible.builtin.assert:
+    that:
+      - __testing_quotawarning_stat['stat']['exists']
+      - __testing_quotawarning_stat['stat']['executable']
+      - __testing_quotawarning_stat['stat']['mode'] == '0755'
+    fail_msg: >-
+      The quota-warning script is missing or has unexpected mode/perms:
+      {{ __testing_quotawarning_stat['stat'] | ansible.builtin.default({}) }}
+    success_msg: "The quota-warning script exists at '/usr/local/bin/dovecot-quota-warning.sh' with mode 0755."
+
+
+- name: "Molecule | Verify | Read quota-warning script content"
+  ansible.builtin.slurp:
+    src: "/usr/local/bin/dovecot-quota-warning.sh"
+  register: __testing_quotawarning_content
+
+
+- name: "Molecule | Verify | Assert quota-warning script references the platform-specific dovecot-lda path and Subject"
+  ansible.builtin.assert:
+    that:
+      - __run_dovecot_dovecot_lda_exec_path in (__testing_quotawarning_content['content'] | ansible.builtin.b64decode)
+      - "'Subject: Quota warning' in (__testing_quotawarning_content['content'] | ansible.builtin.b64decode)"
+    fail_msg: >-
+      The quota-warning script is missing the platform-specific dovecot-lda path
+      ('{{ __run_dovecot_dovecot_lda_exec_path }}') or the rendered Subject header. Content:
+      {{ __testing_quotawarning_content['content'] | ansible.builtin.b64decode }}
+    success_msg: >-
+      The quota-warning script references the expected dovecot-lda path
+      ('{{ __run_dovecot_dovecot_lda_exec_path }}') and the rendered Subject header.
+
+
+## Configuration validity (doveconf -n round-trip)
+
+- name: "Molecule | Verify | Validate the overall Dovecot configuration with doveconf -n"
+  ansible.builtin.command:
+    argv:
+      - "{{ __run_dovecot_doveconf_exec_path }}"
+      - "-n"
+  register: __testing_doveconf_result
+  changed_when:
+    - false
+  failed_when:
+    - __testing_doveconf_result is ansible.builtin.failed
+
+
+- name: "Molecule | Verify | Assert doveconf -n succeeded and reports our protocols"
+  ansible.builtin.assert:
+    that:
+      - __testing_doveconf_result is ansible.builtin.success
+      - "'imap' in __testing_doveconf_result['stdout']"
+      - "'lmtp' in __testing_doveconf_result['stdout']"
+    fail_msg: >-
+      doveconf -n failed or reported unexpected output.
+      stdout: {{ __testing_doveconf_result['stdout'] | ansible.builtin.default('') }}
+      stderr: {{ __testing_doveconf_result['stderr'] | ansible.builtin.default('') }}
+    success_msg: "doveconf -n succeeded and reports the expected protocols."

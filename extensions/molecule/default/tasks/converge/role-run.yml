@@ -1,0 +1,121 @@
+# Execute the collection role "run" against all driver-created instances.
+
+- name: "Molecule | Converge | Store run_dovecot_* role parameters in __testing_state"
+  ansible.builtin.include_tasks:
+    file: "../tasks/state_update.yml"
+  vars:
+    __testing_state_update:
+      # set all role configuration variables
+      run_dovecot_state: "present"
+      run_dovecot_autoupgrade: false
+      run_dovecot_service_state: "enabled"
+
+      # mail identity. UID/GID are deliberately set high to avoid colliding
+      # with whatever resident the test image happens to ship at uid 1000
+      # and to really test something odd
+      run_dovecot_mail_user_manage: true
+      run_dovecot_mail_user_name: "vmail"
+      run_dovecot_mail_user_uid: 8000
+      run_dovecot_mail_group_name: "vmail"
+      run_dovecot_mail_group_gid: 8000
+      run_dovecot_mail_storage_path: "/srv/vmail"
+
+      # The settings dict deliberately exercises:
+      # - protocols → triggers protocol-extras package install path
+      #   (dovecot-{imapd,lmtpd,sieve,managesieved} on Debian; dovecot-pigeonhole on Fedora)
+      # - per-protocol "protocol imap" block with mail_plugins → exercises the
+      #   per-protocol plugin scanner in helper_list_extra_packages.j2
+      # - nested blocks (namespace, service, inet/unix listener) → exercises the
+      #   recursive render_settings() macro path
+      # - scalar/dict mix on the same level + boolean + integer + list types
+      #   → exercises every rendering branch in the macro
+      run_dovecot_settings:
+        dovecot_config_version: "2.4.0" # lowest common denominator across Debian 13 (2.4.0) and Fedora 4x (2.4.3)
+        protocols: "imap lmtp sieve"
+        ssl: "no" # no certificate management in scope for this scenario
+        disable_plaintext_auth: false
+        auth_mechanisms: "plain login"
+        mail_driver: "maildir"
+        mail_path: "~/Maildir"
+        mail_home: "/srv/vmail/%{user}"
+        first_valid_uid: 8000
+        last_valid_uid: 8000
+        mail_plugins: "quota"
+        log_path: "/var/log/dovecot.log"
+        "namespace inbox":
+          inbox: true
+          separator: "/"
+          prefix: ""
+          "mailbox Drafts":
+            auto: "subscribe"
+            special_use: '\Drafts'
+          "mailbox Sent":
+            auto: "subscribe"
+            special_use: '\Sent'
+        "service imap-login":
+          "inet_listener imap":
+            port: 143
+          "inet_listener imaps":
+            port: 0 # disable, no TLS in this test
+        "service lmtp":
+          "unix_listener lmtp":
+            mode: "0666"
+        "protocol imap":
+          mail_plugins: "$mail_plugins imap_quota"
+
+      # static passdb keeps the integration test self-contained: no external
+      # LDAP/SQL needed. "static" with a password setting allows the service to
+      # start without us needing to actually attempt a login.
+      run_dovecot_passdbs:
+        - driver: "static"
+          args: "password=testtest"
+
+      run_dovecot_userdbs:
+        - driver: "static"
+          args: "uid=8000 gid=8000 home=/srv/vmail/%{user}"
+
+      # Exercise the external-files renderers (master_users + quota_warning_script).
+      # The LDAP renderer is deliberately not exercised here, there is no local LDAP
+      # server to validate against, and a syntax-only check would tell us nothing the
+      # template can't already prove via doveconf -n.
+      run_dovecot_external_files:
+        master_users:
+          enabled: true
+          # default path is fine; leave it unset to exercise the role-default branch
+          entries:
+            - username: "admin"
+              # not a realistic hash; we just verify the file is written verbatim
+              password_hash: "{PLAIN}molecule-test-only"
+        quota_warning_script:
+          enabled: true
+          path: "/usr/local/bin/dovecot-quota-warning.sh"
+          from: "postmaster@example.com"
+          subject: "Quota warning (${PERCENT}% full)"
+          body: |
+            EN: Your mailbox is now ${PERCENT}% full.
+            DE: Ihr Postfach ist zu ${PERCENT}% belegt.
+
+      # Exercise the verbatim-content escape hatch too.
+      run_dovecot_settings_extra_content: |
+        # === foundata.dovecot.run: molecule escape-hatch marker ===
+
+
+- name: "Molecule | Converge | Set run_dovecot_* parameters as facts from __testing_state"
+  ansible.builtin.set_fact:
+    "{{ item['key'] }}": "{{ item['value'] }}"
+  loop: >-
+    {{
+      (__testing_state | default({}, true))
+      | ansible.builtin.dict2items
+      | ansible.builtin.selectattr('key', 'match', '^run_dovecot_')
+      | ansible.builtin.list
+    }}
+
+
+- name: "Molecule | Converge | Include the foundata.dovecot.run role"
+  ansible.builtin.include_role:
+    name: "foundata.dovecot.run"
+  # vars: All run_dovecot* variables are set as facts and passed this way to
+  #       the role. This enables persisting the values in __testing_state
+  #       and restoring them in later stages (e.g. verify) without manually
+  #       duplicating data across playbooks.

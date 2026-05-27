@@ -1,0 +1,12 @@
+# Tasks for the Molecule prepare stage: Add resources needed for later steps
+# (e.g. verify) on Fedora driver-created instances.
+
+# The Fedora image we run against does not preinstall the helpers that
+# ansible.builtin.package_facts needs for the dnf5/rpm backend. Pre-seed them
+# here so later verify-stage assertions on installed packages can run cheaply.
+- name: "Molecule | Prepare | Install dependencies needed for package_facts on Fedora"
+  ansible.builtin.package:
+    name:
+      - "python3-rpm"
+      - "python3-libdnf5"
+    state: "present"

@@ -385,7 +385,7 @@ argument_specs:
                 tls: false
                 auth_bind: true
                 dn: "CN=svc,DC=example,DC=com"
-                dnpass: "{{ lookup('ansible.builtin.unvault', '...') | trim }}"
+                dnpass: "\{\{ lookup('ansible.builtin.unvault', '...') | trim \}\}"
                 base: "OU=Users,DC=example,DC=com"
                 scope: "subtree"
                 user_filter: "(&(objectClass=user)(mail=%u))"

@@ -235,7 +235,7 @@ argument_specs:
               mail_path: "~/mail/data"
               "mailbox Drafts":
                 auto: "subscribe"
-                special_use: '\\Drafts'
+                special_use: '\Drafts'
 
             "service imap-login":
               "inet_listener imap":

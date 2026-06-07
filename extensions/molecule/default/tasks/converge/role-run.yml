@@ -1,10 +1,38 @@
 # Execute the collection role "run" against all driver-created instances.
 
+# The following task avoids fragile workarounds (like parsing container names)
+# if facts are needed below (e.g. to derive the per-OS dummy certificate paths).
+- name: "Molecule | Converge | Gather molecule playbook-specific facts"
+  ansible.builtin.setup:
+    gather_subset:
+      - "distribution"
+  when:
+    - ansible_facts['distribution'] is not ansible.builtin.defined or
+      ansible_facts['os_family'] is not ansible.builtin.defined
+
+
+# These paths must match the dummy cert/key created in tasks/prepare/all.yml.
+# They are stored in __testing_state below so the verify stage can re-use them
+# without duplicating the per-OS path logic.
+- name: "Molecule | Converge | Derive per-OS dummy TLS cert/key paths"
+  ansible.builtin.set_fact:
+    __testing_dovecot_ssl_cert_path: >-
+      {{ ('/etc/pki/tls/certs' if (ansible_facts['os_family'] | ansible.builtin.lower) == 'redhat' else '/etc/ssl/certs')
+         ~ '/dovecot-dummy-cert.pem' }}
+    __testing_dovecot_ssl_key_path: >-
+      {{ ('/etc/pki/tls/private' if (ansible_facts['os_family'] | ansible.builtin.lower) == 'redhat' else '/etc/ssl/private')
+         ~ '/dovecot-dummy-key.pem' }}
+
+
 - name: "Molecule | Converge | Store run_dovecot_* role parameters in __testing_state"
   ansible.builtin.include_tasks:
     file: "../tasks/state_update.yml"
   vars:
     __testing_state_update:
+      # Persist the dummy TLS cert/key paths so the verify stage can re-use them.
+      __testing_dovecot_ssl_cert_path: "{{ __testing_dovecot_ssl_cert_path }}"
+      __testing_dovecot_ssl_key_path: "{{ __testing_dovecot_ssl_key_path }}"
+
       # set all role configuration variables
       run_dovecot_state: "present"
       run_dovecot_autoupgrade: false
@@ -30,10 +58,20 @@
       # - scalar/dict mix on the same level + boolean + integer + list types
       #   → exercises every rendering branch in the macro
       run_dovecot_settings:
-        dovecot_config_version: "2.4.0" # lowest common denominator across Debian 13 (2.4.0) and Fedora 4x (2.4.3)
+        dovecot_config_version: "2.4.0" # lowest common denominator across Debian 13 (2.4.0) and Fedora 4x (2.4.x)
+        dovecot_storage_version: "2.4.0" # mandatory in 2.4 alongside dovecot_config_version
         protocols: "imap lmtp sieve"
-        ssl: "no" # no certificate management in scope for this scenario
-        disable_plaintext_auth: false
+        # TLS. Dovecot 2.4 renamed the SSL settings: ssl_cert/ssl_key (with a
+        # leading "<") became ssl_server_cert_file/ssl_server_key_file taking a
+        # plain filesystem path. The cert/key are the throwaway dummy material
+        # created in tasks/prepare/all.yml.
+        ssl: "yes"
+        ssl_server_cert_file: "{{ __testing_dovecot_ssl_cert_path }}"
+        ssl_server_key_file: "{{ __testing_dovecot_ssl_key_path }}"
+        # Dovecot 2.4 renamed disable_plaintext_auth → auth_allow_cleartext
+        # (inverted semantics); keep cleartext auth allowed so the STARTTLS check
+        # is not forced into a TLS-only login.
+        auth_allow_cleartext: true
         auth_mechanisms: "plain login"
         mail_driver: "maildir"
         mail_path: "~/Maildir"
@@ -54,9 +92,10 @@
             special_use: '\Sent'
         "service imap-login":
           "inet_listener imap":
-            port: 143
+            port: 143 # plain IMAP + STARTTLS
           "inet_listener imaps":
-            port: 0 # disable, no TLS in this test
+            port: 993 # implicit TLS
+            ssl: true
         "service lmtp":
           "unix_listener lmtp":
             mode: "0666"
@@ -66,13 +105,26 @@
       # static passdb keeps the integration test self-contained: no external
       # LDAP/SQL needed. "static" with a password setting allows the service to
       # start without us needing to actually attempt a login.
+      #
+      # Dovecot 2.4 requires every passdb/userdb block to be named and dropped
+      # the "args" setting in favour of inline, driver-specific settings (the
+      # userdb static identity goes into a nested "fields { }" block).
+      #
+      # We deliberately omit the "name" key so the role falls back to using the
+      # "driver" value as the block name (-> "passdb static { ... }"). This is
+      # required for the static driver because its "password" setting is
+      # driver-scoped and only resolves by its short name when the block name
+      # equals the driver.
       run_dovecot_passdbs:
         - driver: "static"
-          args: "password=testtest"
+          password: "testtest"
 
       run_dovecot_userdbs:
         - driver: "static"
-          args: "uid=8000 gid=8000 home=/srv/vmail/%{user}"
+          fields:
+            uid: 8000
+            gid: 8000
+            home: "/srv/vmail/%{user}"
 
       # Exercise the external-files renderers (master_users + quota_warning_script).
       # The LDAP renderer is deliberately not exercised here, there is no local LDAP

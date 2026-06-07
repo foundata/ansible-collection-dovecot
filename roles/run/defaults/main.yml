@@ -126,7 +126,7 @@ run_dovecot_mail_group_gid: 1000
 # Absolute path to the root directory holding Dovecot's mail storage tree.
 #
 # The role ensures the directory exists with ownership
-# `run_dovecot_mail_user_name`:`run_dovecot_mail_group_name` and mode `0770`.
+# `run_dovecot_mail_user_name`: `run_dovecot_mail_group_name` and mode `0770`.
 # Filesystem provisioning (partitioning, `mkfs`, mounts, `/etc/fstab`) is
 # explicitly out of scope for this role — mount whatever backing storage you
 # want at this path before running the role, or accept that it lives on the root
@@ -155,8 +155,8 @@ run_dovecot_mail_storage_path: "/srv/vmail"
 #   and `protocols: "imap lmtp sieve"` render identically.
 # - Dict value → `key { ... }` (recursive).
 # - Block name encoded inline in the YAML key, split on first whitespace:
-#   `"service imap-login"`, `"namespace inbox"`, `'unix_listener
-#   "/var/spool/postfix/private/auth"'`, `plugin:` (anonymous).
+#   `"service imap-login"`, `"namespace inbox"`,
+#   `'unix_listener "/var/spool/postfix/private/auth"'`, `plugin:` (anonymous).
 #
 # The `dovecot_config_version` key (which Dovecot 2.4 REQUIRES) is always
 # emitted as the first non-comment line in `dovecot.conf`, regardless of where
@@ -181,7 +181,7 @@ run_dovecot_mail_storage_path: "/srv/vmail"
 #
 #   protocols: "imap lmtp sieve"
 #   mail_plugins: "acl quota sieve"
-#   disable_plaintext_auth: true
+#   auth_allow_cleartext: false
 #   auth_mechanisms: "plain login"
 #
 #   "namespace inbox":
@@ -193,7 +193,7 @@ run_dovecot_mail_storage_path: "/srv/vmail"
 #     mail_path: "~/mail/data"
 #     "mailbox Drafts":
 #       auto: "subscribe"
-#       special_use: '\\Drafts'
+#       special_use: '\Drafts'
 #
 #   "service imap-login":
 #     "inet_listener imap":
@@ -231,7 +231,7 @@ run_dovecot_settings: {}
 # `run_dovecot_settings` dictionary cannot express what you need (e.g. exotic
 # block forms that bypass the YAML-key encoding, or a conditional include which
 # was not known when the role was designed or simply a yet missing feature role
-# feature you can open an issue for but need a solution ).
+# feature you can open an issue for but need a solution *now*).
 #
 # Prefer `run_dovecot_settings` whenever possible.
 #
@@ -239,7 +239,7 @@ run_dovecot_settings: {}
 #
 # - Type: str
 # - Required: No
-# - Default:
+# - Default: ""
 run_dovecot_settings_extra_content: ""
 
 # Ordered list of Dovecot `passdb { ... }` blocks (the password database lookup
@@ -247,35 +247,47 @@ run_dovecot_settings_extra_content: ""
 # the authentication fallback chain Dovecot evaluates top-to-bottom.
 #
 # A dedicated list is required (instead of folding into `run_dovecot_settings`)
-# because `passdb` blocks have no name attribute and ordering matters —
-# properties YAML dictionaries cannot guarantee.
+# because the order of the lookup chain matters and YAML dictionaries neither
+# preserve order nor allow the duplicate keys that repeated blocks would need.
 #
-# Each entry is a dictionary whose key/value pairs are rendered as `key = value`
-# inside the block. The schema is intentionally loose; common keys include:
+# Each entry is a dictionary that is rendered into one `passdb <name> { ... }`
+# block. The schema is intentionally loose: every key/value pair becomes an
+# inline setting (`key = value`; nested dicts render as nested `key { ... }`
+# blocks, YAML lists are space-joined), with two reserved keys:
 #
-# - `driver` (required): backend type (`ldap`, `passwd-file`, `pam`, `passwd`,
-#   `shadow`, `static`, …)
-# - `args`: backend-specific argument string (e.g. path to a `.conf.ext` for
-#   LDAP, path to a passwd-file)
-# - `master`: `true` to mark this passdb as supplying master users
-# - `result_success`, `result_failure`, `result_internalfail`: chain control
-#   (`return-ok`, `return-fail`, `continue`, `continue-ok`, `continue-fail`)
-# - `default_fields`, `override_fields`, `mechanisms`, `username_filter`,
-#   `auth_verbose`, …
+# - `name`: the block's unique filter name (Dovecot 2.4 REQUIRES every
+#   passdb/userdb block to be named). It is used only as the block label and is
+#   NOT rendered as a setting. When omitted, the `driver` value is used as the
+#   name.
+# - `driver`: backend type (`static`, `passwd-file`, `pam`, `ldap`, `sql`, …).
+#   When omitted, Dovecot uses the block `name` as the driver.
 #
-# Refer to https://doc.dovecot.org/main/core/config/auth/passdb.html for the
-# full list of fields and their semantics.
+# Dovecot 2.4 removed the old `args` setting: driver-specific options are now
+# given as individual inline settings instead (e.g. `password` for `static`,
+# `passwd_file_path` for `passwd-file`, the LDAP connection settings for `ldap`,
+# …). Refer to https://doc.dovecot.org/main/core/config/auth/passdb.html for the
+# full list of per-driver settings and their semantics.
+#
+# IMPORTANT: some settings are *driver-scoped* and Dovecot only accepts them by
+# their short name when the block name equals the driver (e.g. `static` 's
+# `password`). For those drivers, leave `name` unset so it defaults to the
+# driver. Settings that are not driver-scoped (e.g. `passwd-file` 's
+# `passwd_file_path`) work under any custom `name`, which you need when
+# declaring several blocks of the same driver.
 #
 # Example:
 #
 # ```yaml
 # run_dovecot_passdbs:
-#   - driver: "ldap"
-#     args: "/etc/dovecot/dovecot-ldap.conf.ext"
-#   - driver: "passwd-file"
-#     args: "/etc/dovecot/master-users"
-#     master: true
-#     result_success: "continue"
+#   # "name" omitted -> defaults to the driver ("passdb static { ... }"),
+#   # required so the driver-scoped "password" resolves by its short name.
+#   - driver: "static"
+#     password: "{PLAIN}changeme"
+#   # A custom "name" allows several blocks of the same driver; only use
+#   # settings that are not driver-scoped (passwd_file_path qualifies).
+#   - name: "master"
+#     driver: "passwd-file"
+#     passwd_file_path: "/etc/dovecot/passwd.masterusers"
 # ```
 #
 # - Type: list
@@ -284,24 +296,28 @@ run_dovecot_settings_extra_content: ""
 # - List elements: dict
 run_dovecot_passdbs: []
 
-# Ordered list of Dovecot `userdb { ... }` blocks (the user database lookup
-# chain). One block is rendered per list entry, in declaration order.
+# Ordered list of Dovecot `userdb <name> { ... }` blocks (the user database
+# lookup chain). One block is rendered per list entry, in declaration order.
 #
-# Same rationale, structure and rendering as `run_dovecot_passdbs`, see there
-# for details. Common entry keys include `driver`, `args`, `default_fields`,
-# `override_fields`, `result_*`, ...
+# Same rationale, structure and rendering as `run_dovecot_passdbs` (named blocks
+# via the reserved `name` key, `driver` selecting the backend, all other keys
+# rendered as inline settings, no `args`), see there for details. For the
+# `static` driver the synthetic user identity is given as a nested
+# `fields { ... }` block (`uid`, `gid`, `home`, …).
 #
 # Refer to https://doc.dovecot.org/main/core/config/auth/userdb.html for the
-# full list of fields and their semantics.
+# full list of per-driver settings and their semantics.
 #
 # Example:
 #
 # ```yaml
 # run_dovecot_userdbs:
-#   - driver: "ldap"
-#     args: "/etc/dovecot/dovecot-ldap-userdb.conf.ext"
+#   # "name" omitted -> defaults to the driver ("userdb static { ... }").
 #   - driver: "static"
-#     args: "uid=vmail gid=vmail home=/srv/vmail/%u"
+#     fields:
+#       uid: "vmail"
+#       gid: "vmail"
+#       home: "/srv/vmail/%{user}"
 # ```
 #
 # - Type: list
@@ -340,7 +356,7 @@ run_dovecot_userdbs: []
 #       tls: false
 #       auth_bind: true
 #       dn: "CN=svc,DC=example,DC=com"
-#       dnpass: "{{ lookup('ansible.builtin.unvault', '...') | trim }}"
+#       dnpass: "\{\{ lookup('ansible.builtin.unvault', '...') | trim \}\}"
 #       base: "OU=Users,DC=example,DC=com"
 #       scope: "subtree"
 #       user_filter: "(&(objectClass=user)(mail=%u))"

@@ -197,10 +197,11 @@
       - "'service lmtp {' in __testing_dovecotconf_decoded"
       - "'unix_listener lmtp {' in __testing_dovecotconf_decoded"
       - "'protocol imap {' in __testing_dovecotconf_decoded"
-      # passdb/userdb blocks
-      - "'passdb {' in __testing_dovecotconf_decoded"
+      # passdb/userdb blocks (Dovecot 2.4 requires named blocks; with "name"
+      # omitted the role uses the driver as the block name -> "passdb static {")
+      - "'passdb static {' in __testing_dovecotconf_decoded"
       - "'driver = static' in __testing_dovecotconf_decoded"
-      - "'userdb {' in __testing_dovecotconf_decoded"
+      - "'userdb static {' in __testing_dovecotconf_decoded"
       # verbatim escape-hatch content was appended
       - "'foundata.dovecot.run: molecule escape-hatch marker' in __testing_dovecotconf_decoded"
       # the final include_try line is present
@@ -317,14 +318,92 @@
     - __testing_doveconf_result is ansible.builtin.failed
 
 
-- name: "Molecule | Verify | Assert doveconf -n succeeded and reports our protocols"
+- name: "Molecule | Verify | Assert doveconf -n succeeded and reports our protocols and TLS settings"
   ansible.builtin.assert:
     that:
       - __testing_doveconf_result is ansible.builtin.success
       - "'imap' in __testing_doveconf_result['stdout']"
       - "'lmtp' in __testing_doveconf_result['stdout']"
+      # TLS is enabled and points at the dummy cert/key created during prepare.
+      # Dovecot 2.4 uses ssl_server_cert_file / ssl_server_key_file (not the old
+      # ssl_cert / ssl_key with a leading "<").
+      - "'ssl = yes' in __testing_doveconf_result['stdout']"
+      - __testing_dovecot_ssl_cert_path in __testing_doveconf_result['stdout']
+      - __testing_dovecot_ssl_key_path in __testing_doveconf_result['stdout']
     fail_msg: >-
       doveconf -n failed or reported unexpected output.
       stdout: {{ __testing_doveconf_result['stdout'] | ansible.builtin.default('') }}
       stderr: {{ __testing_doveconf_result['stderr'] | ansible.builtin.default('') }}
-    success_msg: "doveconf -n succeeded and reports the expected protocols."
+    success_msg: "doveconf -n succeeded and reports the expected protocols and TLS settings."
+
+
+## TLS: real handshakes against the running service
+#
+# Prove that Dovecot actually serves TLS with our dummy certificate, both as
+# implicit TLS (IMAPS, port 993) and via STARTTLS on the plain IMAP port (143).
+# We use `openssl s_client` and feed an IMAP LOGOUT on stdin so the client
+# terminates cleanly after the handshake. The certificate subject we set during
+# prepare ("SomeOrganization") only shows up if the handshake got far enough to
+# exchange the server certificate, so its presence is our TLS proof.
+
+- name: "Molecule | Verify | Set openssl executable path"
+  ansible.builtin.set_fact:
+    __testing_openssl_executable: "/usr/bin/openssl"
+
+
+- name: "Molecule | Verify | TLS handshake (implicit IMAPS on 993)"
+  ansible.builtin.command:
+    argv:
+      - "{{ __testing_openssl_executable }}"
+      - "s_client"
+      - "-connect"
+      - "127.0.0.1:993"
+      - "-crlf"
+    stdin: "a1 LOGOUT\n"
+  changed_when: false
+  failed_when: false
+  register: __testing_imaps_result
+
+
+- name: "Molecule | Verify | Assert the implicit IMAPS (993) handshake presented our dummy cert"
+  ansible.builtin.assert:
+    that:
+      - "'CONNECTED' in (__testing_imaps_result['stdout'] ~ __testing_imaps_result['stderr'])"
+      - "'SomeOrganization' in (__testing_imaps_result['stdout'] ~ __testing_imaps_result['stderr'])"
+      - "'Verify return code' in (__testing_imaps_result['stdout'] ~ __testing_imaps_result['stderr'])"
+    fail_msg: >-
+      Implicit TLS on port 993 did not complete a handshake presenting the dummy
+      certificate.
+      stdout: {{ __testing_imaps_result['stdout'] | ansible.builtin.default('') }}
+      stderr: {{ __testing_imaps_result['stderr'] | ansible.builtin.default('') }}
+    success_msg: "Implicit IMAPS (993) completed a TLS handshake serving the dummy certificate."
+
+
+- name: "Molecule | Verify | TLS handshake (STARTTLS on plain IMAP 143)"
+  ansible.builtin.command:
+    argv:
+      - "{{ __testing_openssl_executable }}"
+      - "s_client"
+      - "-connect"
+      - "127.0.0.1:143"
+      - "-starttls"
+      - "imap"
+      - "-crlf"
+    stdin: "a1 LOGOUT\n"
+  changed_when: false
+  failed_when: false
+  register: __testing_imap_starttls_result
+
+
+- name: "Molecule | Verify | Assert the IMAP STARTTLS (143) handshake presented our dummy cert"
+  ansible.builtin.assert:
+    that:
+      - "'CONNECTED' in (__testing_imap_starttls_result['stdout'] ~ __testing_imap_starttls_result['stderr'])"
+      - "'SomeOrganization' in (__testing_imap_starttls_result['stdout'] ~ __testing_imap_starttls_result['stderr'])"
+      - "'Verify return code' in (__testing_imap_starttls_result['stdout'] ~ __testing_imap_starttls_result['stderr'])"
+    fail_msg: >-
+      STARTTLS on the plain IMAP port 143 did not complete a handshake presenting
+      the dummy certificate.
+      stdout: {{ __testing_imap_starttls_result['stdout'] | ansible.builtin.default('') }}
+      stderr: {{ __testing_imap_starttls_result['stderr'] | ansible.builtin.default('') }}
+    success_msg: "IMAP STARTTLS (143) completed a TLS handshake serving the dummy certificate."

@@ -39,15 +39,22 @@
 {%- endmacro %}
 
 
-{# Render a list of "passdb { ... }" or "userdb { ... }" blocks (the
-   authentication lookup chain). Pass "block_name" as the literal block kind
-   ("passdb" or "userdb"). Order is preserved as Dovecot evaluates these
-   top-to-bottom. #}
+{# Render a list of "passdb <name> { ... }" or "userdb <name> { ... }" blocks
+   (the authentication lookup chain). Pass "block_name" as the literal block
+   kind ("passdb" or "userdb"). Order is preserved as Dovecot evaluates these
+   top-to-bottom.
+
+   Dovecot 2.4 REQUIRES every passdb/userdb block to carry a unique name
+   (the "filter name"). It is taken from the entry's "name" key; when that is
+   omitted it falls back to the "driver" value (Dovecot uses the block name as
+   the driver when the "driver" setting is empty). The "name" key itself is
+   never rendered as a setting. #}
 {% macro render_dbblocks(blocks, block_name) -%}
 {%-   set ns = namespace(out='') -%}
 {%-   for block in blocks -%}
-{%-     set ns.out = ns.out ~ block_name ~ ' {\n' -%}
-{%-     for key, value in block.items() -%}
+{%-     set label = block['name'] | ansible.builtin.default(block['driver'] | ansible.builtin.default('', true), true) -%}
+{%-     set ns.out = ns.out ~ block_name ~ ' ' ~ label ~ ' {\n' -%}
+{%-     for key, value in block.items() if key != 'name' -%}
 {%-       if value is mapping -%}
 {%-         set ns.out = ns.out ~ '  ' ~ key ~ ' {\n' ~ render_settings(value, 2) ~ '  }\n' -%}
 {%-       elif (value is iterable) and (value is not string) -%}

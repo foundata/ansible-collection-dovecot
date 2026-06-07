@@ -327,10 +327,15 @@ run_dovecot_passdbs: []
 run_dovecot_userdbs: []
 
 # Container for file artifacts Dovecot reads or runs that are NOT `dovecot.conf`
-# itself. They have their own parsers or semantics (LDAP `.conf.ext` syntax,
-# passwd-file format, executable scripts, ...). You could create these files
-# with your own additional tasks (e.g. upfront, before calling the role), but
-# this variable exposes some handy helpers for commonly needed use cases.
+# itself. They have their own parsers or semantics (passwd-file format,
+# executable scripts, ...). You could create these files with your own
+# additional tasks (e.g. upfront, before calling the role), but this variable
+# exposes some handy helpers for commonly needed use cases.
+#
+# Note: LDAP is configured entirely inline in `run_dovecot_passdbs` /
+# `run_dovecot_userdbs` (`driver: ldap` plus `uris`, `dn`, `dnpass`, `base`,
+# `user_filter`, `pass_filter`, `user_attrs`, ...). Dovecot 2.4 no longer uses a
+# separate `dovecot-ldap.conf.ext` file, so there is no LDAP helper here.
 #
 # Top-level keys are constrained to the closed set declared as suboptions below
 # — unknown keys are rejected by Ansible's argument-spec validation at role
@@ -348,22 +353,6 @@ run_dovecot_userdbs: []
 #
 # ```yaml
 # run_dovecot_external_files:
-#   ldap:
-#     enabled: true
-#     path: "/etc/dovecot/dovecot-ldap.conf.ext"   # role-default; can be omitted
-#     settings:
-#       uris: "ldap://ldap.example.com:389"
-#       tls: false
-#       auth_bind: true
-#       dn: "CN=svc,DC=example,DC=com"
-#       dnpass: "\{\{ lookup('ansible.builtin.unvault', '...') | trim \}\}"
-#       base: "OU=Users,DC=example,DC=com"
-#       scope: "subtree"
-#       user_filter: "(&(objectClass=user)(mail=%u))"
-#       pass_filter: "(&(objectClass=user)(mail=%u))"
-#       user_attrs: "..."
-#       blocking: true
-#     userdb_separate_file: true
 #   master_users:
 #     enabled: true
 #     path: "/etc/dovecot/passwd.masterusers"      # role-default; can be omitted

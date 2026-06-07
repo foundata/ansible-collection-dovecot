@@ -372,10 +372,16 @@ argument_specs:
       run_dovecot_external_files:
         description: |
           Container for file artifacts Dovecot reads or runs that are NOT `dovecot.conf`
-          itself. They have their own parsers or semantics (LDAP `.conf.ext` syntax,
-          passwd-file format, executable scripts, ...). You could create these files
-          with your own additional tasks (e.g. upfront, before calling the role), but
-          this variable exposes some handy helpers for commonly needed use cases.
+          itself. They have their own parsers or semantics (passwd-file format,
+          executable scripts, ...). You could create these files with your own
+          additional tasks (e.g. upfront, before calling the role), but this variable
+          exposes some handy helpers for commonly needed use cases.
+
+          Note: LDAP is configured entirely inline in `run_dovecot_passdbs` /
+          `run_dovecot_userdbs` (`driver: ldap` plus `uris`, `dn`, `dnpass`,
+          `base`, `user_filter`, `pass_filter`, `user_attrs`, ...). Dovecot 2.4 no
+          longer uses a separate `dovecot-ldap.conf.ext` file, so there is no LDAP
+          helper here.
 
           Top-level keys are constrained to the closed set declared as suboptions
           below — unknown keys are rejected by Ansible's argument-spec validation at
@@ -394,22 +400,6 @@ argument_specs:
 
           ```yaml
           run_dovecot_external_files:
-            ldap:
-              enabled: true
-              path: "/etc/dovecot/dovecot-ldap.conf.ext"   # role-default; can be omitted
-              settings:
-                uris: "ldap://ldap.example.com:389"
-                tls: false
-                auth_bind: true
-                dn: "CN=svc,DC=example,DC=com"
-                dnpass: "\{\{ lookup('ansible.builtin.unvault', '...') | trim \}\}"
-                base: "OU=Users,DC=example,DC=com"
-                scope: "subtree"
-                user_filter: "(&(objectClass=user)(mail=%u))"
-                pass_filter: "(&(objectClass=user)(mail=%u))"
-                user_attrs: "..."
-                blocking: true
-              userdb_separate_file: true
             master_users:
               enabled: true
               path: "/etc/dovecot/passwd.masterusers"      # role-default; can be omitted
@@ -428,61 +418,6 @@ argument_specs:
         type: "dict"
         default: {}
         options:
-
-          ldap:
-            description: |
-              Renders Dovecot's LDAP backend configuration into the file pointed to
-              by `path`. The LDAP file uses Dovecot's alternate parser: no
-              `!include`, no `$variables`, raw `key = value` lines only.
-
-              The rendered file is typically referenced from `run_dovecot_passdbs` /
-              `run_dovecot_userdbs` via `args: "<path>"`. When
-              `userdb_separate_file` is `true`, a sibling file is rendered next to
-              `path` with `-userdb` inserted before the extension (e.g.
-              `dovecot-ldap.conf.ext` → `dovecot-ldap-userdb.conf.ext`) to support
-              split passdb/userdb lookups.
-
-              `enabled: false` removes the file (and, if applicable, the sibling
-              `*-userdb.conf.ext`) if present.
-            type: "dict"
-            options:
-              enabled:
-                description: |
-                  When `true` (the default), the role renders the file at `path`.
-                  When `false`, the role removes the file (and the sibling
-                  `*-userdb.conf.ext` if `userdb_separate_file: true`) if present.
-                type: "bool"
-                default: true
-              path:
-                description: |
-                  Absolute path where the rendered LDAP configuration is written.
-                  The same path must be referenced from the corresponding
-                  `run_dovecot_passdbs` / `run_dovecot_userdbs` entries via their
-                  `args` key. When `userdb_separate_file` is `true`, the sibling
-                  userdb file is written next to this path with `-userdb` inserted
-                  before its extension.
-                type: "str"
-                default: '/etc/dovecot/dovecot-ldap.conf.ext'
-              settings:
-                description: |
-                  Raw key/value pairs written verbatim into the rendered file.
-
-                  Keys are intentionally NOT enumerated by this role. Refer to
-                  https://doc.dovecot.org/main/core/config/auth/passdb_ldap.html
-                  for the full list of supported keys (`uris`, `dn`, `dnpass`,
-                  `base`, `scope`, `user_filter`, `pass_filter`, `user_attrs`,
-                  `auth_bind`, `tls`, `blocking`, ...).
-                type: "dict"
-              userdb_separate_file:
-                description: |
-                  When `true`, the role also renders a parallel
-                  `*-userdb.conf.ext` (same `settings`, name derived from `path`)
-                  so that a separate `userdb { driver: ldap, args: <that-path> }`
-                  block can be configured. Useful when passdb and userdb queries
-                  need different filters/attributes or to keep them
-                  independently overridable.
-                type: "bool"
-                default: false
 
           master_users:
             description: |

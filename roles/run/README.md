@@ -23,11 +23,6 @@ The `foundata.dovecot.run` Ansible role (part of the `foundata.dovecot` Ansible 
   - [`run_dovecot_passdbs`](#variable-run_dovecot_passdbs)
   - [`run_dovecot_userdbs`](#variable-run_dovecot_userdbs)
   - [`run_dovecot_external_files`](#variable-run_dovecot_external_files)
-    - [`run_dovecot_external_files['ldap']`](#variable-run_dovecot_external_files-sub-ldap)
-      - [`run_dovecot_external_files['ldap']['enabled']`](#variable-run_dovecot_external_files-sub-ldap-sub-enabled)
-      - [`run_dovecot_external_files['ldap']['path']`](#variable-run_dovecot_external_files-sub-ldap-sub-path)
-      - [`run_dovecot_external_files['ldap']['settings']`](#variable-run_dovecot_external_files-sub-ldap-sub-settings)
-      - [`run_dovecot_external_files['ldap']['userdb_separate_file']`](#variable-run_dovecot_external_files-sub-ldap-sub-userdb_separate_file)
     - [`run_dovecot_external_files['master_users']`](#variable-run_dovecot_external_files-sub-master_users)
       - [`run_dovecot_external_files['master_users']['enabled']`](#variable-run_dovecot_external_files-sub-master_users-sub-enabled)
       - [`run_dovecot_external_files['master_users']['path']`](#variable-run_dovecot_external_files-sub-master_users-sub-path)
@@ -119,7 +114,7 @@ The following variables can be configured for this role:
 | `run_dovecot_settings_extra_content` | `str` | No | `""` | Raw verbatim Dovecot configuration appended at the end of `/etc/dovecot/dovecot.conf` (before the trailing `!include_try local.conf`).<br><br>This is an escape hatch of last resort for the rare case where the `run_dovecot_settings` dictionary cannot […](#variable-run_dovecot_settings_extra_content) |
 | `run_dovecot_passdbs` | `list` | No | `[]` | Ordered list of Dovecot `passdb { ... }` blocks (the password database lookup chain). One block is rendered per list entry, in declaration order — this is the authentication fallback chain Dovecot evaluates top-to-bottom.<br><br>A dedicated list is […](#variable-run_dovecot_passdbs) |
 | `run_dovecot_userdbs` | `list` | No | `[]` | Ordered list of Dovecot `userdb { ... }` blocks (the user database lookup chain). One block is rendered per list entry, in declaration order.<br><br>Same rationale, structure and rendering as `run_dovecot_passdbs` (named blocks via the reserved […](#variable-run_dovecot_userdbs) |
-| `run_dovecot_external_files` | `dict` | No | `{}` | Container for file artifacts Dovecot reads or runs that are NOT `dovecot.conf` itself. They have their own parsers or semantics (LDAP `.conf.ext` syntax, passwd-file format, executable scripts, ...). You could create these files with your own […](#variable-run_dovecot_external_files) |
+| `run_dovecot_external_files` | `dict` | No | `{}` | Container for file artifacts Dovecot reads or runs that are NOT `dovecot.conf` itself. They have their own parsers or semantics (passwd-file format, executable scripts, ...). You could create these files with your own additional tasks (e.g. upfront, […](#variable-run_dovecot_external_files) |
 
 ### `run_dovecot_state`<a id="variable-run_dovecot_state"></a>
 
@@ -518,10 +513,16 @@ run_dovecot_userdbs:
 [*⇑ Back to ToC ⇑*](#toc)
 
 Container for file artifacts Dovecot reads or runs that are NOT `dovecot.conf`
-itself. They have their own parsers or semantics (LDAP `.conf.ext` syntax,
-passwd-file format, executable scripts, ...). You could create these files
-with your own additional tasks (e.g. upfront, before calling the role), but
-this variable exposes some handy helpers for commonly needed use cases.
+itself. They have their own parsers or semantics (passwd-file format,
+executable scripts, ...). You could create these files with your own
+additional tasks (e.g. upfront, before calling the role), but this variable
+exposes some handy helpers for commonly needed use cases.
+
+Note: LDAP is configured entirely inline in `run_dovecot_passdbs` /
+`run_dovecot_userdbs` (`driver: ldap` plus `uris`, `dn`, `dnpass`,
+`base`, `user_filter`, `pass_filter`, `user_attrs`, ...). Dovecot 2.4 no
+longer uses a separate `dovecot-ldap.conf.ext` file, so there is no LDAP
+helper here.
 
 Top-level keys are constrained to the closed set declared as suboptions
 below — unknown keys are rejected by Ansible's argument-spec validation at
@@ -540,22 +541,6 @@ Example:
 
 ```yaml
 run_dovecot_external_files:
-  ldap:
-    enabled: true
-    path: "/etc/dovecot/dovecot-ldap.conf.ext"   # role-default; can be omitted
-    settings:
-      uris: "ldap://ldap.example.com:389"
-      tls: false
-      auth_bind: true
-      dn: "CN=svc,DC=example,DC=com"
-      dnpass: "\{\{ lookup('ansible.builtin.unvault', '...') | trim \}\}"
-      base: "OU=Users,DC=example,DC=com"
-      scope: "subtree"
-      user_filter: "(&(objectClass=user)(mail=%u))"
-      pass_filter: "(&(objectClass=user)(mail=%u))"
-      user_attrs: "..."
-      blocking: true
-    userdb_separate_file: true
   master_users:
     enabled: true
     path: "/etc/dovecot/passwd.masterusers"      # role-default; can be omitted
@@ -575,85 +560,6 @@ run_dovecot_external_files:
 - **Type**: `dict`
 - **Required**: No
 - **Default**: `{}`
-
-#### `run_dovecot_external_files['ldap']`<a id="variable-run_dovecot_external_files-sub-ldap"></a>
-
-[*⇑ Back to ToC ⇑*](#toc)
-
-Renders Dovecot's LDAP backend configuration into the file pointed to
-by `path`. The LDAP file uses Dovecot's alternate parser: no
-`!include`, no `$variables`, raw `key = value` lines only.
-
-The rendered file is typically referenced from `run_dovecot_passdbs` /
-`run_dovecot_userdbs` via `args: "<path>"`. When
-`userdb_separate_file` is `true`, a sibling file is rendered next to
-`path` with `-userdb` inserted before the extension (e.g.
-`dovecot-ldap.conf.ext` → `dovecot-ldap-userdb.conf.ext`) to support
-split passdb/userdb lookups.
-
-`enabled: false` removes the file (and, if applicable, the sibling
-`*-userdb.conf.ext`) if present.
-
-- **Type**: `dict`
-- **Required**: No
-
-##### `run_dovecot_external_files['ldap']['enabled']`<a id="variable-run_dovecot_external_files-sub-ldap-sub-enabled"></a>
-
-[*⇑ Back to ToC ⇑*](#toc)
-
-When `true` (the default), the role renders the file at `path`.
-When `false`, the role removes the file (and the sibling
-`*-userdb.conf.ext` if `userdb_separate_file: true`) if present.
-
-- **Type**: `bool`
-- **Required**: No
-- **Default**: `true`
-
-##### `run_dovecot_external_files['ldap']['path']`<a id="variable-run_dovecot_external_files-sub-ldap-sub-path"></a>
-
-[*⇑ Back to ToC ⇑*](#toc)
-
-Absolute path where the rendered LDAP configuration is written.
-The same path must be referenced from the corresponding
-`run_dovecot_passdbs` / `run_dovecot_userdbs` entries via their
-`args` key. When `userdb_separate_file` is `true`, the sibling
-userdb file is written next to this path with `-userdb` inserted
-before its extension.
-
-- **Type**: `str`
-- **Required**: No
-- **Default**: `"/etc/dovecot/dovecot-ldap.conf.ext"`
-
-##### `run_dovecot_external_files['ldap']['settings']`<a id="variable-run_dovecot_external_files-sub-ldap-sub-settings"></a>
-
-[*⇑ Back to ToC ⇑*](#toc)
-
-Raw key/value pairs written verbatim into the rendered file.
-
-Keys are intentionally NOT enumerated by this role. Refer to
-https://doc.dovecot.org/main/core/config/auth/passdb_ldap.html
-for the full list of supported keys (`uris`, `dn`, `dnpass`,
-`base`, `scope`, `user_filter`, `pass_filter`, `user_attrs`,
-`auth_bind`, `tls`, `blocking`, ...).
-
-- **Type**: `dict`
-- **Required**: No
-
-##### `run_dovecot_external_files['ldap']['userdb_separate_file']`<a id="variable-run_dovecot_external_files-sub-ldap-sub-userdb_separate_file"></a>
-
-[*⇑ Back to ToC ⇑*](#toc)
-
-When `true`, the role also renders a parallel
-`*-userdb.conf.ext` (same `settings`, name derived from `path`)
-so that a separate `userdb { driver: ldap, args: <that-path> }`
-block can be configured. Useful when passdb and userdb queries
-need different filters/attributes or to keep them
-independently overridable.
-
-- **Type**: `bool`
-- **Required**: No
-- **Default**: `false`
-
 
 #### `run_dovecot_external_files['master_users']`<a id="variable-run_dovecot_external_files-sub-master_users"></a>
 

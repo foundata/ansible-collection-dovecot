@@ -154,10 +154,15 @@ __run_dovecot_paths_neutralize: {}
 # full (no "!include conf.d/*.conf" is emitted) so any distribution-shipped
 # conf.d/*.conf files are left dormant on disk; a tombstone marker is dropped
 # alongside them to explain the situation to operators.
+#
+# Mode is 0600 root:root on purpose: in Dovecot 2.4 backend credentials (e.g.
+# the LDAP/SQL bind password via ldap_auth_dn_password) live INLINE in
+# dovecot.conf, so the file must not be world-readable. The Dovecot master
+# process reads it as root before dropping privileges, so root-only is safe.
 __run_dovecot_dovecotconf_file_path: "/etc/dovecot/dovecot.conf"
 __run_dovecot_dovecotconf_file_owner: "root"
 __run_dovecot_dovecotconf_file_group: "root"
-__run_dovecot_dovecotconf_file_mode: "u=rw,g=r,o=r" # 0644
+__run_dovecot_dovecotconf_file_mode: "u=rw,g=,o=" # 0600
 
 # Directory holding distribution-shipped configuration snippets that the role
 # deliberately leaves dormant. A tombstone marker is placed there to explain

@@ -195,13 +195,13 @@
       - "'service imap-login {' in __testing_dovecotconf_decoded"
       - "'inet_listener imap {' in __testing_dovecotconf_decoded"
       - "'service lmtp {' in __testing_dovecotconf_decoded"
-      - "'unix_listener lmtp {' in __testing_dovecotconf_decoded"
+      - "'unix_listener lmtp-test {' in __testing_dovecotconf_decoded"
       - "'protocol imap {' in __testing_dovecotconf_decoded"
       # passdb/userdb blocks (Dovecot 2.4 requires named blocks; with "name"
-      # omitted the role uses the driver as the block name -> "passdb static {")
-      - "'passdb static {' in __testing_dovecotconf_decoded"
-      - "'driver = static' in __testing_dovecotconf_decoded"
-      - "'userdb static {' in __testing_dovecotconf_decoded"
+      # omitted the role uses the driver as the block name -> "passdb passwd-file {")
+      - "'passdb passwd-file {' in __testing_dovecotconf_decoded"
+      - "'userdb passwd-file {' in __testing_dovecotconf_decoded"
+      - "'passwd_file_path = /etc/dovecot/users' in __testing_dovecotconf_decoded"
       # verbatim escape-hatch content was appended
       - "'foundata.dovecot.run: molecule escape-hatch marker' in __testing_dovecotconf_decoded"
       # the final include_try line is present
@@ -237,15 +237,21 @@
   register: __testing_masterusers_stat
 
 
-- name: "Molecule | Verify | Assert the master-users passwd-file exists"
+- name: "Molecule | Verify | Assert the master-users passwd-file exists and is readable by the auth group"
   ansible.builtin.assert:
     that:
       - __testing_masterusers_stat['stat']['exists']
       - __testing_masterusers_stat['stat']['mode'] == '0640'
+      # Must be group-readable by the Dovecot auth group (the auth process runs
+      # as the dovecot user, not root/vmail), otherwise master-user login breaks.
+      - __testing_masterusers_stat['stat']['gr_name'] == __run_dovecot_auth_group
     fail_msg: >-
-      The master-users passwd-file is missing or has unexpected mode:
+      The master-users passwd-file is missing or has unexpected mode/group
+      (expected group '{{ __run_dovecot_auth_group }}'):
       {{ __testing_masterusers_stat['stat'] | ansible.builtin.default({}) }}
-    success_msg: "The master-users passwd-file at '/etc/dovecot/passwd.masterusers' exists with mode 0640."
+    success_msg: >-
+      The master-users passwd-file at '/etc/dovecot/passwd.masterusers' exists with mode 0640
+      and group '{{ __run_dovecot_auth_group }}'.
 
 
 - name: "Molecule | Verify | Read master-users passwd-file content"
@@ -407,3 +413,123 @@
       stdout: {{ __testing_imap_starttls_result['stdout'] | ansible.builtin.default('') }}
       stderr: {{ __testing_imap_starttls_result['stderr'] | ansible.builtin.default('') }}
     success_msg: "IMAP STARTTLS (143) completed a TLS handshake serving the dummy certificate."
+
+
+## Functional: real IMAP login + LMTP delivery against the passwd-file user
+#
+# These go beyond "the service is up": they prove authentication actually works
+# (a real LOGIN with the passwd-file passdb) and that mail can be delivered and
+# is retrievable (LMTP -> userdb -> Maildir).
+
+- name: "Molecule | Verify | IMAP LOGIN over implicit TLS (993)"
+  ansible.builtin.command:
+    argv:
+      - "{{ __testing_openssl_executable }}"
+      - "s_client"
+      - "-connect"
+      - "127.0.0.1:993"
+      - "-quiet"
+      - "-crlf"
+    # IMAP dialog: authenticate as the passwd-file user, then log out. -crlf
+    # turns these LFs into CRLFs. -quiet suppresses the handshake noise so
+    # stdout carries the IMAP responses.
+    stdin: "a1 LOGIN {{ __testing_dovecot_imap_user }} {{ __testing_dovecot_imap_password }}\na2 LOGOUT\n"
+  changed_when: false
+  failed_when: false
+  register: __testing_imap_login_result
+
+
+- name: "Molecule | Verify | Assert the IMAP LOGIN succeeded"
+  ansible.builtin.assert:
+    that:
+      - "'a1 OK' in __testing_imap_login_result['stdout']"
+    fail_msg: >-
+      IMAP LOGIN as '{{ __testing_dovecot_imap_user }}' over TLS (993) did not
+      succeed (expected an 'a1 OK' tagged response).
+      stdout: {{ __testing_imap_login_result['stdout'] | ansible.builtin.default('') }}
+      stderr: {{ __testing_imap_login_result['stderr'] | ansible.builtin.default('') }}
+    success_msg: "IMAP LOGIN as '{{ __testing_dovecot_imap_user }}' over TLS (993) succeeded."
+
+
+- name: "Molecule | Verify | Deliver a test message via LMTP (unix socket)"
+  ansible.builtin.command:
+    argv:
+      - "/usr/bin/python3"
+      - "-c"
+      # Raw LMTP dialog over the unix socket. LMTP needs LHLO (not EHLO), so we
+      # speak it directly instead of via smtplib. The server returns one reply
+      # per recipient after the final ".".
+      - |
+        import socket, sys
+        sock_path, rcpt = sys.argv[1], sys.argv[2]
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(15)
+        s.connect(sock_path)
+        f = s.makefile("rwb")
+        def resp():
+            while True:
+                line = f.readline().decode(errors="replace")
+                if not line:
+                    raise SystemExit("connection closed unexpectedly")
+                if len(line) >= 4 and line[3] == " ":
+                    return line[:3], line.rstrip()
+        def send(cmd):
+            f.write((cmd + "\r\n").encode()); f.flush()
+        code, text = resp(); assert code == "220", text
+        send("LHLO molecule.test"); code, text = resp(); assert code == "250", text
+        send("MAIL FROM:<molecule@molecule.test>"); code, text = resp(); assert code == "250", text
+        send("RCPT TO:<%s>" % rcpt); code, text = resp(); assert code == "250", text
+        send("DATA"); code, text = resp(); assert code == "354", text
+        f.write(
+            b"Subject: molecule LMTP delivery check\r\n"
+            b"From: molecule@molecule.test\r\n"
+            b"To: " + rcpt.encode() + b"\r\n\r\n"
+            b"Hello from the molecule LMTP delivery check.\r\n.\r\n"
+        ); f.flush()
+        code, text = resp(); assert code == "250", text
+        send("QUIT")
+        print("LMTP-DELIVERED-OK")
+      - "{{ __testing_dovecot_lmtp_socket }}"
+      - "{{ __testing_dovecot_imap_user }}"
+  changed_when: true
+  register: __testing_lmtp_deliver_result
+
+
+- name: "Molecule | Verify | Assert LMTP delivery reported success"
+  ansible.builtin.assert:
+    that:
+      - __testing_lmtp_deliver_result is ansible.builtin.success
+      - "'LMTP-DELIVERED-OK' in __testing_lmtp_deliver_result['stdout']"
+    fail_msg: >-
+      LMTP delivery to '{{ __testing_dovecot_imap_user }}' via
+      '{{ __testing_dovecot_lmtp_socket }}' failed.
+      stdout: {{ __testing_lmtp_deliver_result['stdout'] | ansible.builtin.default('') }}
+      stderr: {{ __testing_lmtp_deliver_result['stderr'] | ansible.builtin.default('') }}
+    success_msg: "LMTP delivery to '{{ __testing_dovecot_imap_user }}' succeeded."
+
+
+- name: "Molecule | Verify | Query the mailbox state with doveadm"
+  ansible.builtin.command:
+    argv:
+      - "{{ __run_dovecot_doveadm_exec_path }}"
+      - "mailbox"
+      - "status"
+      - "-u"
+      - "{{ __testing_dovecot_imap_user }}"
+      - "messages"
+      - "INBOX"
+  changed_when: false
+  register: __testing_doveadm_status
+
+
+- name: "Molecule | Verify | Assert the delivered message is in the mailbox"
+  ansible.builtin.assert:
+    that:
+      - __testing_doveadm_status is ansible.builtin.success
+      - "'messages=' in __testing_doveadm_status['stdout']"
+      - "'messages=0' not in __testing_doveadm_status['stdout']"
+    fail_msg: >-
+      The mailbox of '{{ __testing_dovecot_imap_user }}' does not contain the
+      delivered message. doveadm: {{ __testing_doveadm_status['stdout'] | ansible.builtin.default('') }}
+    success_msg: >-
+      doveadm confirms the LMTP-delivered message is in the INBOX of '{{ __testing_dovecot_imap_user }}'.

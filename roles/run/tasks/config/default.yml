@@ -34,7 +34,9 @@
         src: "master-users.j2"
         dest: "{{ __run_dovecot_external_files_master_users_path }}"
         owner: "root"
-        group: "{{ run_dovecot_mail_group_name if run_dovecot_mail_user_manage else 'root' }}"
+        # The Dovecot auth process (runs as the dovecot user) reads this file, so
+        # it must be readable by the dovecot auth group, not the mail group.
+        group: "{{ __run_dovecot_auth_group }}"
         mode: "u=rw,g=r,o=" # 0640, contains password hashes
       when:
         - __run_dovecot_external_files_master_users_enabled | ansible.builtin.bool

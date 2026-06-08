@@ -1,72 +1,69 @@
-# Tasks for the Molecule prepare stage: Add resources needed for later steps
-# (e.g. converge, verify) on all driver-created instances.
+# Tasks for the Molecule prepare stage: resources needed by later steps.
 #
-# The role itself does NOT manage TLS certificate material (cert/key files are
-# expected to already exist, e.g. provisioned by a CA, certbot or another role).
-# To still be able to test Dovecot's TLS surface (implicit IMAPS and STARTTLS)
-# we generate a throwaway, self-signed dummy certificate here so the converge
-# stage can point Dovecot's ssl_server_cert_file / ssl_server_key_file at it.
+# Provides:
+#   - a throwaway dummy TLS certificate (so the role can enable IMAPS/STARTTLS),
+#   - the package-manager Python bindings ansible.builtin.package_facts needs,
+#   - a localhost OpenLDAP (slapd) seeded with a demo user, so the converge can
+#     configure an LDAP passdb/userdb in addition to the passwd-file backend and
+#     the verify can log in as both a passwd-file user and an LDAP user.
+#
+# The role itself does NOT manage TLS certificate material or directory servers;
+# this is test scaffolding only.
+#
+# Two LDAP bootstrap paths (Enterprise Linux has no openldap-servers; it would
+# need 389-ds, out of scope for now):
+#   - Debian family: slapd auto-configures from a debconf preseed.
+#   - Fedora:        manual cn=config bootstrap of the shipped default mdb DB.
+#
+# Security Notice: These are NOT real credentials. Test/demo data only.
+# LDAP admin: cn=admin,dc=example,dc=test / AdminTest1234__
+# Demo user:  uid=ldapuser,ou=people,dc=example,dc=test / LdapTest1234__
 
 
-- name: "Molecule | Prepare | Install needed packages"
-  ansible.builtin.package:
-    name:
-      - "ca-certificates" # Certificate management tools (update-ca-certificates / update-ca-trust)
-      - "openssl" # Create the dummy certificate and run the TLS client checks (s_client)
-    state: "present"
+### Per-OS parameters
 
-
-# ansible.builtin.package_facts (used in the verify stage) needs the platform's
-# package-manager Python bindings, which the base images do not always ship.
-# Pre-seed them per OS family so the verify-stage assertions can enumerate
-# installed packages.
-- name: "Molecule | Prepare | Install dependencies needed for package_facts (Red Hat)"
-  ansible.builtin.package:
-    name:
-      - "python3-rpm"
-      - "python3-libdnf5"
-    state: "present"
-  when:
-    - (ansible_facts['os_family'] | ansible.builtin.lower) == 'redhat'
-
-
-- name: "Molecule | Prepare | Install dependencies needed for package_facts (Debian)"
-  ansible.builtin.package:
-    name:
-      - "python3-apt"
-    state: "present"
-  when:
-    - (ansible_facts['os_family'] | ansible.builtin.lower) == 'debian'
-
-
-# Helpful overview regarding certificate paths and tools on different OS:
-# https://github.com/millermatt/osca
-
-- name: "Molecule | Prepare | Certificates: Set paths (Debian)"
+- name: "Molecule | Prepare | Set parameters (Debian)"
   ansible.builtin.set_fact:
     __testing_certs_cert_dir: "/etc/ssl/certs"
     __testing_certs_key_dir: "/etc/ssl/private"
-    __testing_certs_trustanchors_dir: "/usr/local/share/ca-certificates"
+    __testing_ldap_server_packages: ["slapd"]
+    __testing_ldap_client_packages: ["ldap-utils"]
+    __testing_pkgfacts_packages: ["python3-apt"]
+    __testing_ldap_schema_dir: "/etc/ldap/schema"
   when:
     - (ansible_facts['os_family'] | ansible.builtin.lower) == 'debian'
 
 
-- name: "Molecule | Prepare | Certificates: Set paths (Red Hat)"
+- name: "Molecule | Prepare | Set parameters (Red Hat / Fedora)"
   ansible.builtin.set_fact:
     __testing_certs_cert_dir: "/etc/pki/tls/certs"
     __testing_certs_key_dir: "/etc/pki/tls/private"
-    __testing_certs_trustanchors_dir: "/etc/pki/ca-trust/source/anchors"
+    __testing_ldap_server_packages: ["openldap-servers"]
+    __testing_ldap_client_packages: ["openldap-clients"]
+    __testing_pkgfacts_packages: ["python3-rpm", "python3-libdnf5"]
+    __testing_ldap_schema_dir: "/etc/openldap/schema"
   when:
     - (ansible_facts['os_family'] | ansible.builtin.lower) == 'redhat'
 
 
-- name: "Molecule | Prepare | Certificates: Set dummy cert/key file paths"
+- name: "Molecule | Prepare | Set certificate/key paths"
   ansible.builtin.set_fact:
-    # The cert can be world-readable (mode 0644), the key must stay root-only
-    # (mode 0600). Dovecot's master process runs as root and reads both.
     __testing_certs_dummycert_pem: "{{ __testing_certs_cert_dir }}/dovecot-dummy-cert.pem"
     __testing_certs_dummykey_pem: "{{ __testing_certs_key_dir }}/dovecot-dummy-key.pem"
 
+
+### Packages
+
+- name: "Molecule | Prepare | Install base packages (TLS tooling, package_facts deps, LDAP client)"
+  ansible.builtin.package:
+    name: >-
+      {{ ['ca-certificates', 'openssl']
+         + __testing_pkgfacts_packages
+         + __testing_ldap_client_packages }}
+    state: "present"
+
+
+### Dummy TLS certificate (cert world-readable, key root-only)
 
 - name: "Molecule | Prepare | Certificates: Ensure the private key directory exists"
   ansible.builtin.file:
@@ -90,10 +87,10 @@
       - "/usr/bin/openssl"
       - "req"
       - "-newkey"
-      - "rsa:2048" # 2048 is plenty for a throwaway test cert and much faster than 4096
+      - "rsa:2048"
       - "-keyout"
       - "{{ __testing_certs_dummykey_pem }}"
-      - "-nodes" # do not encrypt the key, Dovecot would not be able to read it unattended
+      - "-nodes"
       - "-x509"
       - "-days"
       - "3650"
@@ -107,49 +104,167 @@
   changed_when:
     - __testing_dummycert_create_result['rc'] == 0
   when:
-    - __testing_dummycert_stat_result is ansible.builtin.defined
     - not __testing_dummycert_stat_result['stat']['exists']
 
 
-- name: "Molecule | Prepare | Certificates: Set file permissions for dummy cert (world-readable)"
+- name: "Molecule | Prepare | Certificates: Set permissions (cert world-readable, key root-only)"
   ansible.builtin.file:
-    path: "{{ __testing_certs_dummycert_pem }}"
+    path: "{{ item['path'] }}"
     owner: "root"
     group: "root"
-    mode: "u=rw,g=r,o=r" # 0644
+    mode: "{{ item['mode'] }}"
+  loop:
+    - { path: "{{ __testing_certs_dummycert_pem }}", mode: "u=rw,g=r,o=r" } # 0644
+    - { path: "{{ __testing_certs_dummykey_pem }}", mode: "u=rw,g=,o=" } # 0600
+  loop_control:
+    label: "{{ item['path'] }}"
 
 
-- name: "Molecule | Prepare | Certificates: Set file permissions for dummy key (root-only)"
-  ansible.builtin.file:
-    path: "{{ __testing_certs_dummykey_pem }}"
-    owner: "root"
-    group: "root"
-    mode: "u=rw,g=,o=" # 0600
+### OpenLDAP server: install + bootstrap
 
-
-- name: "Molecule | Prepare | Certificates: Copy dummy cert into trust anchor store"
-  ansible.builtin.copy:
-    src: "{{ __testing_certs_dummycert_pem }}"
-    dest: "{{ __testing_certs_trustanchors_dir }}/{{ __testing_certs_dummycert_pem | ansible.builtin.basename }}"
-    remote_src: true
-    owner: "root"
-    group: "root"
-    mode: "u=rw,g=r,o=r" # 0644
-
-
-- name: "Molecule | Prepare | Certificates: Update OS certificate store (Debian)"
-  ansible.builtin.command:
-    argv:
-      - "/usr/sbin/update-ca-certificates"
-  changed_when: false
+# Debian family: preseed before installing so slapd self-configures with our
+# suffix and admin password and creates the base entry.
+- name: "Molecule | Prepare | LDAP: Preseed slapd debconf (Debian)"
+  ansible.builtin.debconf:
+    name: "slapd"
+    question: "{{ item['question'] }}"
+    value: "{{ item['value'] }}"
+    vtype: "{{ item['vtype'] }}"
+  loop:
+    - { question: "slapd/no_configuration", value: "false", vtype: "boolean" }
+    - { question: "slapd/domain", value: "example.test", vtype: "string" }
+    - { question: "shared/organization", value: "Example Test", vtype: "string" }
+    - { question: "slapd/password1", value: "AdminTest1234__", vtype: "password" }
+    - { question: "slapd/password2", value: "AdminTest1234__", vtype: "password" }
+    - { question: "slapd/backend", value: "MDB", vtype: "select" }
+    - { question: "slapd/purge_database", value: "true", vtype: "boolean" }
+    - { question: "slapd/move_old_database", value: "true", vtype: "boolean" }
+  loop_control:
+    label: "{{ item['question'] }}"
+  no_log: true
   when:
     - (ansible_facts['os_family'] | ansible.builtin.lower) == 'debian'
 
 
-- name: "Molecule | Prepare | Certificates: Update OS certificate store (Red Hat)"
+- name: "Molecule | Prepare | LDAP: Install the OpenLDAP server"
+  ansible.builtin.package:
+    name: "{{ __testing_ldap_server_packages }}"
+    state: "present"
+
+
+- name: "Molecule | Prepare | LDAP: Ensure slapd is running"
+  ansible.builtin.service:
+    name: "slapd"
+    state: "started"
+    enabled: true
+
+
+# Fedora: the shipped default mdb DB has suffix dc=my-domain,dc=com and no
+# admin password; reconfigure it online via cn=config (EXTERNAL over ldapi).
+- name: "Molecule | Prepare | LDAP: Reconfigure the default DB suffix/rootDN/rootPW (Fedora)"
   ansible.builtin.command:
     argv:
-      - "/usr/bin/update-ca-trust"
-  changed_when: false
+      - "/usr/bin/ldapmodify"
+      - "-Y"
+      - "EXTERNAL"
+      - "-H"
+      - "ldapi:///"
+    stdin: |
+      dn: olcDatabase={2}mdb,cn=config
+      changetype: modify
+      replace: olcSuffix
+      olcSuffix: dc=example,dc=test
+      -
+      replace: olcRootDN
+      olcRootDN: cn=admin,dc=example,dc=test
+      -
+      replace: olcRootPW
+      olcRootPW: AdminTest1234__
+  changed_when: true
   when:
     - (ansible_facts['os_family'] | ansible.builtin.lower) == 'redhat'
+
+
+# Fedora's default cn=schema ships only the core schema; inetOrgPerson needs
+# cosine + inetorgperson. rc 80 (already loaded) is treated as success.
+- name: "Molecule | Prepare | LDAP: Load cosine + inetorgperson schemas (Fedora)"
+  ansible.builtin.command:
+    argv:
+      - "/usr/bin/ldapadd"
+      - "-Y"
+      - "EXTERNAL"
+      - "-H"
+      - "ldapi:///"
+      - "-f"
+      - "{{ __testing_ldap_schema_dir }}/{{ item }}.ldif"
+  loop:
+    - "cosine"
+    - "inetorgperson"
+  register: __testing_ldap_schema_result
+  changed_when:
+    - __testing_ldap_schema_result['rc'] == 0
+  failed_when:
+    - __testing_ldap_schema_result['rc'] not in [0, 80]
+  when:
+    - (ansible_facts['os_family'] | ansible.builtin.lower) == 'redhat'
+
+
+# Fedora: create the base entry (Debian's debconf already created it).
+- name: "Molecule | Prepare | LDAP: Create the base entry (Fedora)"
+  ansible.builtin.command:
+    argv:
+      - "/usr/bin/ldapadd"
+      - "-x"
+      - "-H"
+      - "ldap://127.0.0.1"
+      - "-D"
+      - "cn=admin,dc=example,dc=test"
+      - "-w"
+      - "AdminTest1234__"
+    stdin: |
+      dn: dc=example,dc=test
+      objectClass: dcObject
+      objectClass: organization
+      o: Example Test
+      dc: example
+  register: __testing_ldap_base_result
+  changed_when:
+    - __testing_ldap_base_result['rc'] == 0
+  failed_when:
+    - __testing_ldap_base_result['rc'] not in [0, 68] # 68 == already exists
+  no_log: true
+  when:
+    - (ansible_facts['os_family'] | ansible.builtin.lower) == 'redhat'
+
+
+### Seed the demo user (both families; the admin bind works the same way)
+
+- name: "Molecule | Prepare | LDAP: Load the org unit and demo user"
+  ansible.builtin.command:
+    argv:
+      - "/usr/bin/ldapadd"
+      - "-x"
+      - "-H"
+      - "ldap://127.0.0.1"
+      - "-D"
+      - "cn=admin,dc=example,dc=test"
+      - "-w"
+      - "AdminTest1234__"
+    stdin: |
+      dn: ou=people,dc=example,dc=test
+      objectClass: organizationalUnit
+      ou: people
+
+      dn: uid=ldapuser,ou=people,dc=example,dc=test
+      objectClass: inetOrgPerson
+      cn: LDAP Demo User
+      sn: User
+      uid: ldapuser
+      mail: ldapuser@example.test
+      userPassword: LdapTest1234__
+  register: __testing_ldap_seed_result
+  changed_when:
+    - __testing_ldap_seed_result['rc'] == 0
+  failed_when:
+    - __testing_ldap_seed_result['rc'] not in [0, 68] # 68 == already exists
+  no_log: true

@@ -533,3 +533,68 @@
       delivered message. doveadm: {{ __testing_doveadm_status['stdout'] | ansible.builtin.default('') }}
     success_msg: >-
       doveadm confirms the LMTP-delivered message is in the INBOX of '{{ __testing_dovecot_imap_user }}'.
+
+
+## Functional: LDAP-backed login
+#
+# Proves the second link of the auth chain: a user unknown to the passwd-file
+# falls through to the ldap passdb/userdb (the localhost slapd from prepare) and
+# can log in over TLS.
+
+- name: "Molecule | Verify | Assert slapd (the test directory) is running"
+  ansible.builtin.assert:
+    that:
+      - (ansible_facts['services']['slapd.service'] | ansible.builtin.default({}))['state'] | ansible.builtin.default('') == 'running'
+    fail_msg: "The test LDAP server (slapd) is not running."
+    success_msg: "The test LDAP server (slapd) is running."
+
+
+- name: "Molecule | Verify | Confirm the LDAP demo user exists in the directory"
+  ansible.builtin.command:
+    argv:
+      - "/usr/bin/ldapsearch"
+      - "-x"
+      - "-H"
+      - "ldap://127.0.0.1"
+      - "-b"
+      - "dc=example,dc=test"
+      - "-LLL"
+      - "(uid={{ __testing_dovecot_ldap_user }})"
+      - "dn"
+  changed_when: false
+  register: __testing_ldapsearch_result
+
+
+- name: "Molecule | Verify | Assert the LDAP demo user is present"
+  ansible.builtin.assert:
+    that:
+      - ('uid=' ~ __testing_dovecot_ldap_user) in __testing_ldapsearch_result['stdout']
+    fail_msg: "The LDAP demo user '{{ __testing_dovecot_ldap_user }}' was not found in the directory."
+    success_msg: "The LDAP demo user '{{ __testing_dovecot_ldap_user }}' is present in the directory."
+
+
+- name: "Molecule | Verify | IMAP LOGIN (LDAP user) over implicit TLS (993)"
+  ansible.builtin.command:
+    argv:
+      - "{{ __testing_openssl_executable }}"
+      - "s_client"
+      - "-connect"
+      - "127.0.0.1:993"
+      - "-quiet"
+      - "-crlf"
+    stdin: "a1 LOGIN {{ __testing_dovecot_ldap_user }} {{ __testing_dovecot_ldap_password }}\na2 LOGOUT\n"
+  changed_when: false
+  failed_when: false
+  register: __testing_ldap_login_result
+
+
+- name: "Molecule | Verify | Assert the LDAP-backed IMAP LOGIN succeeded"
+  ansible.builtin.assert:
+    that:
+      - "'a1 OK' in __testing_ldap_login_result['stdout']"
+    fail_msg: >-
+      LDAP-backed IMAP LOGIN as '{{ __testing_dovecot_ldap_user }}' over TLS (993)
+      did not succeed (expected an 'a1 OK' tagged response).
+      stdout: {{ __testing_ldap_login_result['stdout'] | ansible.builtin.default('') }}
+      stderr: {{ __testing_ldap_login_result['stderr'] | ansible.builtin.default('') }}
+    success_msg: "LDAP-backed IMAP LOGIN as '{{ __testing_dovecot_ldap_user }}' over TLS (993) succeeded."

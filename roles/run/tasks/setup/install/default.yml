@@ -23,6 +23,19 @@
   loop: "{{ lookup('template', 'helper_list_protocols.j2') }}"
 
 
+- name: "Setup | Install | Default | Validate declared mail_plugins against the platform's plugin-to-package map"
+  ansible.builtin.assert:
+    that:
+      - (item in __run_dovecot_packages_plugins_map)
+    fail_msg: >-
+      Unknown mail_plugin {{ item | ansible.builtin.to_json }} in
+      run_dovecot_settings (top-level or per-protocol mail_plugins). Known
+      plugins on this platform:
+      {{ __run_dovecot_packages_plugins_map.keys() | ansible.builtin.sort | ansible.builtin.list | ansible.builtin.to_json }}.
+    quiet: true
+  loop: "{{ lookup('template', 'helper_list_plugins.j2') }}"
+
+
 - name: "Setup | Install | Default | Install or upgrade packages"
   ansible.builtin.package:
     name: "{{ __run_dovecot_packages_install }}"

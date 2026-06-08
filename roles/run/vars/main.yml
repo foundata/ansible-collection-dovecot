@@ -71,10 +71,12 @@ __run_dovecot_packages_protocols_map:
 # Plugins listed in run_dovecot_settings['mail_plugins'] (and inside
 # "protocol <name>": blocks) are looked up here at task time to derive the
 # set of distribution sub-packages to install. Per-platform overrides replace
-# this dictionary with platform-specific values. Plugins not in the map are
-# silently ignored on the package-install side (Dovecot will still hard-fail
-# at start time if a plugin is genuinely unavailable, which is the more
-# actionable error for the operator).
+# this dictionary with platform-specific values. This map doubles as the set of
+# plugins the role knows about: a plugin token not present here causes a hard
+# fail (assertion in tasks/setup/install/default.yml) listing the known plugins,
+# catching typos early instead of letting Dovecot fail later with a less
+# actionable error. Add new plugins here (value [] if they need no extra
+# package) to support them.
 __run_dovecot_packages_plugins_map:
   acl: []
   fts: []

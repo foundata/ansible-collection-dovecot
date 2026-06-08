@@ -10,9 +10,11 @@
    Each protocol token is looked up in __run_dovecot_packages_protocols_map.
    Each plugin token is looked up in __run_dovecot_packages_plugins_map.
    Each passdb/userdb driver is looked up in __run_dovecot_packages_authdb_map.
-   Tokens not present in the respective map are silently skipped here —
-   protocol validity is enforced separately by an Ansible-side assertion (see
-   tasks/config/default.yml).
+
+   Unknown protocol and mail_plugin tokens are rejected up front by Ansible-side
+   assertions (see tasks/setup/install/default.yml), so anything reaching this
+   template is already a known key. Unknown passdb/userdb drivers are simply
+   skipped here (the auth-driver set is open-ended and intentionally lenient).
 
    Tokens beginning with `$` (e.g. `$mail_plugins`) are skipped as those are
    Dovecot setting references, not literal plugin/protocol names.

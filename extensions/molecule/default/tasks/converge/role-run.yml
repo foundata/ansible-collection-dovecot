@@ -24,6 +24,22 @@
          ~ '/dovecot-dummy-key.pem' }}
 
 
+# Self-contained passwd-file auth backend for the functional tests (real IMAP
+# LOGIN over TLS + LMTP delivery). No external LDAP/SQL needed.
+#
+# Security Notice: These are NOT real credentials. This is example/test data.
+# Reporting it as a leak reflects a failure to review automated scan results. ;-)
+# Plaintext: MoleculeTest1234__   (hash: openssl passwd -6 -salt moltest01 ...)
+- name: "Molecule | Converge | Define passwd-file test identity"
+  ansible.builtin.set_fact:
+    __testing_dovecot_imap_user: "johndoe"
+    __testing_dovecot_imap_password: "MoleculeTest1234__"
+    __testing_dovecot_imap_password_hash: "{CRYPT}$6$moltest01$5yRZcN98Aow6VxIDKYULnZNnuG85SQMUKKzQrh2qtzYyXfrJIOPuz.Jr20kXrZHOAwwTK1.CFLHgE7oEElZ2F0"
+    __testing_dovecot_user_home: "/srv/vmail/johndoe"
+    __testing_dovecot_passwd_file: "/etc/dovecot/users"
+    __testing_dovecot_lmtp_socket: "/run/dovecot/lmtp-test"
+
+
 - name: "Molecule | Converge | Store run_dovecot_* role parameters in __testing_state"
   ansible.builtin.include_tasks:
     file: "../tasks/state_update.yml"
@@ -32,6 +48,12 @@
       # Persist the dummy TLS cert/key paths so the verify stage can re-use them.
       __testing_dovecot_ssl_cert_path: "{{ __testing_dovecot_ssl_cert_path }}"
       __testing_dovecot_ssl_key_path: "{{ __testing_dovecot_ssl_key_path }}"
+
+      # Persist the passwd-file test identity / socket for the verify stage.
+      __testing_dovecot_imap_user: "{{ __testing_dovecot_imap_user }}"
+      __testing_dovecot_imap_password: "{{ __testing_dovecot_imap_password }}"
+      __testing_dovecot_user_home: "{{ __testing_dovecot_user_home }}"
+      __testing_dovecot_lmtp_socket: "{{ __testing_dovecot_lmtp_socket }}"
 
       # set all role configuration variables
       run_dovecot_state: "present"
@@ -97,34 +119,30 @@
             port: 993 # implicit TLS
             ssl: true
         "service lmtp":
-          "unix_listener lmtp":
+          # Relative listener name -> socket lands at <base_dir>/lmtp-test
+          # (/run/dovecot/lmtp-test). The verify stage speaks LMTP to it to
+          # deliver a test message; 0666 lets the test client connect.
+          "unix_listener lmtp-test":
             mode: "0666"
         "protocol imap":
           mail_plugins: "$mail_plugins imap_quota"
 
-      # static passdb keeps the integration test self-contained: no external
-      # LDAP/SQL needed. "static" with a password setting allows the service to
-      # start without us needing to actually attempt a login.
+      # passwd-file backend: self-contained (no external LDAP/SQL) and, unlike
+      # the "static" driver, lets the verify stage perform a real IMAP LOGIN and
+      # LMTP delivery against an actual user. The same file feeds both passdb
+      # (password check) and userdb (uid/gid/home). It is created after the role
+      # runs (see "Create the passwd-file login database" task below).
       #
-      # Dovecot 2.4 requires every passdb/userdb block to be named and dropped
-      # the "args" setting in favour of inline, driver-specific settings (the
-      # userdb static identity goes into a nested "fields { }" block).
-      #
-      # We deliberately omit the "name" key so the role falls back to using the
-      # "driver" value as the block name (-> "passdb static { ... }"). This is
-      # required for the static driver because its "password" setting is
-      # driver-scoped and only resolves by its short name when the block name
-      # equals the driver.
+      # "name" is omitted so the block name defaults to the driver
+      # (-> "passdb passwd-file {"); passwd_file_path is not driver-scoped, so
+      # it resolves regardless.
       run_dovecot_passdbs:
-        - driver: "static"
-          password: "testtest"
+        - driver: "passwd-file"
+          passwd_file_path: "/etc/dovecot/users"
 
       run_dovecot_userdbs:
-        - driver: "static"
-          fields:
-            uid: 8000
-            gid: 8000
-            home: "/srv/vmail/%{user}"
+        - driver: "passwd-file"
+          passwd_file_path: "/etc/dovecot/users"
 
       # Exercise the external-files renderers (master_users + quota_warning_script).
       # The LDAP renderer is deliberately not exercised here, there is no local LDAP
@@ -171,3 +189,20 @@
   #       the role. This enables persisting the values in __testing_state
   #       and restoring them in later stages (e.g. verify) without manually
   #       duplicating data across playbooks.
+
+
+# Create the passwd-file login database the passdb/userdb above point at. This
+# is test scaffolding (the role does not manage arbitrary user databases), done
+# after the role so /etc/dovecot exists. Dovecot reads it per-auth, so no
+# restart is needed. The fixed content keeps the idempotence run change-free.
+# Fields: user:password:uid:gid:gecos:home:shell:extra_fields
+- name: "Molecule | Converge | Create the passwd-file login database"
+  ansible.builtin.copy:
+    dest: "{{ __testing_dovecot_passwd_file }}"
+    content: |
+      {{ __testing_dovecot_imap_user }}:{{ __testing_dovecot_imap_password_hash }}:8000:8000::{{ __testing_dovecot_user_home }}::
+    owner: "root"
+    # The Dovecot auth process runs as the "dovecot" system user, so the
+    # passdb/userdb file must be readable by that group, not root-only.
+    group: "dovecot"
+    mode: "u=rw,g=r,o=" # 0640, contains a password hash

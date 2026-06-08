@@ -9,7 +9,7 @@
     owner: "{{ __run_dovecot_dovecotconf_file_owner }}"
     group: "{{ __run_dovecot_dovecotconf_file_group }}"
     mode: "{{ __run_dovecot_dovecotconf_file_mode }}"
-    validate: "{{ __run_dovecot_doveconf_exec_path }} -c %s > /dev/null"
+    validate: "{{ __run_dovecot_doveconf_exec_path }} -c %s"
   notify:
     - "run_dovecot: restart dovecot.service"
 

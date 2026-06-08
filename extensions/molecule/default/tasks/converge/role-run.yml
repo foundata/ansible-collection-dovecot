@@ -109,7 +109,10 @@
         mail_home: "/srv/vmail/%{user}"
         first_valid_uid: 8000
         last_valid_uid: 8000
-        mail_plugins: "quota"
+        # Boollist setting in the Dovecot 2.4 block form (a dict renders as
+        # "mail_plugins { quota = yes }"); also covers the plugin->package scan.
+        mail_plugins:
+          quota: true
         log_path: "/var/log/dovecot.log"
         "namespace inbox":
           inbox: true
@@ -134,7 +137,11 @@
           "unix_listener lmtp-test":
             mode: "0666"
         "protocol imap":
-          mail_plugins: "$mail_plugins imap_quota"
+          # Per-protocol boollist in block form; Dovecot merges it with the
+          # global mail_plugins (no "$mail_plugins" needed in 2.4), so imap gets
+          # quota + imap_quota.
+          mail_plugins:
+            imap_quota: true
 
         # LDAP connection (localhost slapd from the prepare stage), shared by the
         # ldap passdb/userdb below. Exercises the role's auth-backend package

@@ -188,7 +188,9 @@
       # scalar/string/list value branches
       - "'protocols = imap lmtp sieve' in __testing_dovecotconf_decoded"
       - "'auth_mechanisms = plain login' in __testing_dovecotconf_decoded"
-      - "'mail_plugins = quota' in __testing_dovecotconf_decoded"
+      # boollist setting rendered in 2.4 block form (mail_plugins { quota = yes })
+      - "'mail_plugins {' in __testing_dovecotconf_decoded"
+      - "'quota = yes' in __testing_dovecotconf_decoded"
       # nested block rendering
       - "'namespace inbox {' in __testing_dovecotconf_decoded"
       - "'mailbox Drafts {' in __testing_dovecotconf_decoded"
@@ -197,6 +199,8 @@
       - "'service lmtp {' in __testing_dovecotconf_decoded"
       - "'unix_listener lmtp-test {' in __testing_dovecotconf_decoded"
       - "'protocol imap {' in __testing_dovecotconf_decoded"
+      # per-protocol boollist block merges with the global mail_plugins
+      - "'imap_quota = yes' in __testing_dovecotconf_decoded"
       # passdb/userdb blocks (Dovecot 2.4 requires named blocks; with "name"
       # omitted the role uses the driver as the block name -> "passdb passwd-file {")
       - "'passdb passwd-file {' in __testing_dovecotconf_decoded"

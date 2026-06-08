@@ -103,6 +103,24 @@ __run_dovecot_packages_plugins_map:
   welcome: []
 
 
+# Dictionary mapping Dovecot passdb/userdb driver names to additional package
+# lists (the authentication/user-database backends).
+#
+# The `driver` value of every entry in run_dovecot_passdbs and
+# run_dovecot_userdbs is looked up here at task time to derive the set of
+# distribution sub-packages to install. Per-platform overrides replace this
+# dictionary with platform-specific values. Drivers not in the map are silently
+# ignored on the package-install side (e.g. static/pam/passwd-file/shadow/passwd
+# need no extra package, and on platforms that build a backend into the base
+# package the value is simply an empty list). This is intentionally lenient
+# (like the plugin map) rather than strict (like the protocol map): the set of
+# auth drivers is open-ended.
+#
+# Empty by default; platforms that split backends into sub-packages (Debian)
+# populate it in vars/<platform>.yml.
+__run_dovecot_packages_authdb_map: {}
+
+
 # List of package names to be uninstalled when run_dovecot_state is
 # set to "absent". This variable is useful when __run_dovecot_packages_install
 # contains packages that are required for the managed software to function but
@@ -122,6 +140,9 @@ __run_dovecot_packages_uninstall: >-
         | ansible.builtin.flatten
         | ansible.builtin.list)
      + (__run_dovecot_packages_plugins_map.values()
+        | ansible.builtin.flatten
+        | ansible.builtin.list)
+     + (__run_dovecot_packages_authdb_map.values()
         | ansible.builtin.flatten
         | ansible.builtin.list))
     | ansible.builtin.unique

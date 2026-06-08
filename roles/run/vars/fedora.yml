@@ -23,6 +23,12 @@ __run_dovecot_packages_protocols_map:
     - "dovecot-pigeonhole"
 
 
+# Fedora's single "dovecot" package builds in the auth/storage backends
+# (LDAP, SQL, GSSAPI, Lua, ...), so no extra package is needed per auth driver.
+__run_dovecot_packages_authdb_map:
+  ldap: []
+
+
 __run_dovecot_packages_plugins_map:
   acl: []
   fts: []

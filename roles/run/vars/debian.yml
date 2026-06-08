@@ -33,6 +33,19 @@ __run_dovecot_packages_protocols_map:
     - "dovecot-managesieved"
 
 
+# Authentication/user-database backends. On Debian-family the LDAP and SQL
+# drivers live in dedicated sub-packages (dovecot-core itself ships only the
+# file/system backends: passwd-file, pam, static, shadow, passwd, ...).
+#
+# The SQL drivers (mysql/pgsql/sqlite) are selected at runtime via the
+# `sql_driver` setting, not via the passdb/userdb `driver` value (which is just
+# "sql"), so they cannot be derived from the driver alone — install the matching
+# dovecot-mysql / dovecot-pgsql / dovecot-sqlite package yourself when using SQL.
+__run_dovecot_packages_authdb_map:
+  ldap:
+    - "dovecot-ldap"
+
+
 __run_dovecot_packages_plugins_map:
   acl: []
   fts: []

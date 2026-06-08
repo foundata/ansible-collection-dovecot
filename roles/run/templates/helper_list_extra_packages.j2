@@ -5,11 +5,13 @@
      - run_dovecot_settings['protocols']                  → top-level protocols
      - run_dovecot_settings['mail_plugins']               → top-level plugins
      - run_dovecot_settings['protocol <name>']['mail_plugins']  → per-protocol plugins
+     - run_dovecot_passdbs[*]['driver'] / run_dovecot_userdbs[*]['driver'] → auth backends
 
    Each protocol token is looked up in __run_dovecot_packages_protocols_map.
    Each plugin token is looked up in __run_dovecot_packages_plugins_map.
+   Each passdb/userdb driver is looked up in __run_dovecot_packages_authdb_map.
    Tokens not present in the respective map are silently skipped here —
-   validity is enforced separately by an Ansible-side assertion (see
+   protocol validity is enforced separately by an Ansible-side assertion (see
    tasks/config/default.yml).
 
    Tokens beginning with `$` (e.g. `$mail_plugins`) are skipped as those are
@@ -42,6 +44,13 @@
 {%   endif -%}
 {% endfor -%}
 
+{% set authdb_drivers = [] -%}
+{% for db in ((run_dovecot_passdbs | default([])) + (run_dovecot_userdbs | default([]))) -%}
+{%   if (db is mapping) and (db['driver'] is defined) -%}
+{%     set _ = authdb_drivers.append(db['driver'] | string | trim) -%}
+{%   endif -%}
+{% endfor -%}
+
 {% set extras = [] -%}
 {% for p in (protocols_list | reject('match', '^\s*$') | reject('match', '^\$') | unique | list) -%}
 {%   if p in __run_dovecot_packages_protocols_map -%}
@@ -51,6 +60,11 @@
 {% for p in (plugin_list | reject('match', '^\s*$') | reject('match', '^\$') | unique | list) -%}
 {%   if p in __run_dovecot_packages_plugins_map -%}
 {%     for pkg in __run_dovecot_packages_plugins_map[p] %}{% set _ = extras.append(pkg) %}{% endfor -%}
+{%   endif -%}
+{% endfor -%}
+{% for d in (authdb_drivers | reject('match', '^\s*$') | unique | list) -%}
+{%   if d in __run_dovecot_packages_authdb_map -%}
+{%     for pkg in __run_dovecot_packages_authdb_map[d] %}{% set _ = extras.append(pkg) %}{% endfor -%}
 {%   endif -%}
 {% endfor -%}
 

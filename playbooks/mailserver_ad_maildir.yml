@@ -32,7 +32,7 @@
 ---
 
 - name: "Configure Dovecot (IMAP/LMTP/ManageSieve, LDAP/AD auth)"
-  hosts: "mailservers" # ADAPT: your inventory group
+  hosts: "{{ target | default('mailservers') }}"
   become: true
   pre_tasks:
 

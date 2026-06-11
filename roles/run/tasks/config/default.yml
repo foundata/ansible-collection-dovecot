@@ -22,7 +22,7 @@
   vars:
     __run_dovecot_external_files_master_users_path: >-
       {{ run_dovecot_external_files['master_users']['path']
-         | ansible.builtin.default('/etc/dovecot/passwd.masterusers', true) }}
+         | ansible.builtin.default(__run_dovecot_external_files_master_users_path_default, true) }}
     __run_dovecot_external_files_master_users_entries: >-
       {{ run_dovecot_external_files['master_users']['entries'] | ansible.builtin.default([]) }}
     __run_dovecot_external_files_master_users_enabled: >-
@@ -61,19 +61,16 @@
   vars:
     __run_dovecot_external_files_quota_warning_path: >-
       {{ run_dovecot_external_files['quota_warning_script']['path']
-         | ansible.builtin.default('/usr/local/bin/dovecot-quota-warning.sh', true) }}
+         | ansible.builtin.default(__run_dovecot_external_files_quota_warning_path_default, true) }}
     __run_dovecot_external_files_quota_warning_from: >-
-      {{ run_dovecot_external_files['quota_warning_script']['from'] | ansible.builtin.default('postmaster') }}
+      {{ run_dovecot_external_files['quota_warning_script']['from']
+         | ansible.builtin.default(__run_dovecot_external_files_quota_warning_from_default) }}
     __run_dovecot_external_files_quota_warning_subject: >-
       {{ run_dovecot_external_files['quota_warning_script']['subject']
-         | ansible.builtin.default('Quota warning (${PERCENT}% full)') }}
+         | ansible.builtin.default(__run_dovecot_external_files_quota_warning_subject_default) }}
     __run_dovecot_external_files_quota_warning_body: >-
       {{ run_dovecot_external_files['quota_warning_script']['body']
          | ansible.builtin.default(__run_dovecot_external_files_quota_warning_body_default, true) }}
-    __run_dovecot_external_files_quota_warning_body_default: |
-      EN: Your mailbox is now ${PERCENT}% full.
-      DE: Ihr Postfach ist zu ${PERCENT}% belegt.
-      FR: Votre boîte est pleine à ${PERCENT}%
     __run_dovecot_external_files_quota_warning_enabled: >-
       {{ run_dovecot_external_files['quota_warning_script']['enabled'] | ansible.builtin.default(true) }}
   block:

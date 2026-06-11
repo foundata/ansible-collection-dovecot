@@ -208,13 +208,31 @@ __run_dovecot_dovecot_lda_exec_path: "/usr/libexec/dovecot/dovecot-lda"
 
 # System group of the Dovecot authentication process (Dovecot's
 # default_internal_group, "dovecot" on all supported platforms). External files
-# that an auth backend reads by path — e.g. the master-users passwd-file — must
+# that an auth backend reads by path (e.g. the master-users passwd-file) must
 # be readable by this group: the auth process runs as the unprivileged dovecot
 # user, NOT as root and NOT as the mail-storage (vmail) group, so it cannot read
 # a file owned only by root or by the mail group. (dovecot.conf itself does not
 # need this: the master process reads it as root and distributes settings via
 # the config socket.)
 __run_dovecot_auth_group: "dovecot"
+
+
+# Default values for the optional external files (run_dovecot_external_files.*).
+# These are the fallbacks applied when a key is omitted from an entry. They live
+# here, not inline in tasks/config/default.yml, so every role default has a
+# single home; the tasks only contain the "user value or this default" glue.
+
+# Master-users passwd-file (the passdb with master = yes reads it).
+__run_dovecot_external_files_master_users_path_default: "/etc/dovecot/passwd.masterusers"
+
+# Quota-warning script (rendered, then wired to a "service quota-warning").
+__run_dovecot_external_files_quota_warning_path_default: "/usr/local/bin/dovecot-quota-warning.sh"
+__run_dovecot_external_files_quota_warning_from_default: "postmaster"
+__run_dovecot_external_files_quota_warning_subject_default: "Quota warning (${PERCENT}% full)"
+__run_dovecot_external_files_quota_warning_body_default: |
+  EN: Your mailbox is now ${PERCENT}% full.
+  DE: Ihr Postfach ist zu ${PERCENT}% belegt.
+  FR: Votre boîte est pleine à ${PERCENT}%
 
 
 ### Override defaults of dependencies used by this role (if any).

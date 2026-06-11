@@ -1,0 +1,841 @@
+# Curated, opinionated example of a production-style Dovecot mailserver with:
+#
+# - IMAP, LMTP, ManageSieve protocol support
+# - Active Directory (LDAP) authentication
+# - Maildir storage
+# - Per-user quota
+# - Sieve filtering
+# - Shared and public IMAP namespaces
+# - Postfix integration
+#
+# Ther is inline reasoning as comments why these values where chosen. This
+# playbook is meant as a starting point: copy it into your own playbook
+# repository and adapt the values as needed (mainly: host group, domains, LDAP,
+# paths) and/or put them into Ansible inventory / group variables.
+#
+# Out of scope (handle in your own playbook, before this role runs):
+#
+# - TLS certificate material. This example points
+#   ssl_server_cert_file / ssl_server_key_file at where the cert/key land.
+#   You might find https://foundata.com/en/projects/ansible-collection-acmesh/
+#   (foundata.acmesh collection) useful to generate valid certificates.
+#
+# - The Postfix side (MTA). This config exposes the LMTP, SASL-auth and
+#   quota-status sockets/ports Postfix talks to. You might find
+#   https://foundata.com/en/projects/ansible-collection-postfix/
+#   (foundata.postfix collection) useful to install and manage Postfix.
+#
+# - Mail storage provisioning (partition/filesystem/mount of the /srv/vmail
+#   directory) if you e.g. want this to live on a dedicated block device or
+#   partition.
+
+---
+
+- name: "Configure Dovecot (IMAP/LMTP/ManageSieve, LDAP/AD auth)"
+  hosts: "mailservers" # ADAPT: your inventory group
+  become: true
+  tasks:
+
+    - name: "Include the foundata.dovecot.run role"
+      ansible.builtin.include_role:
+        name: "foundata.dovecot.run"
+      vars:
+
+        ##### Mail storage service user account
+
+        # A single shared vmail user/group owns all mail data. Using a shared UID/GID
+        # for everyone keeps shared folders and storage handling sane and avoids running
+        # into the 65535-UID ceiling in large environments. This user account is usually
+        # called "vmail".
+        run_dovecot_mail_user_manage: true
+        run_dovecot_mail_user_name: "vmail"
+        run_dovecot_mail_user_uid: 10000
+        run_dovecot_mail_group_name: "vmail"
+        run_dovecot_mail_group_gid: 10000
+        run_dovecot_mail_storage_path: "/srv/vmail"
+
+        run_dovecot_settings:
+          # Dovecot >= 2.4 requires configuration version anchors. So a package upgrade
+          # will not silently changes config or on-disk semantics.
+          dovecot_config_version: "2.4.0"
+          dovecot_storage_version: "2.4.0"
+
+          # Support for:
+          # - imap: talk to mail clients (Mail User Agents, MUAs)
+          # - lmtp: accept mail from the Message Transfer Agent (MTA), e.g. .
+          # - sieve: ManageSieve for user-managed filters (cf. http://sieve.info/)
+          #
+          # No support for:
+          # - pop3: old protocol to talk to MUAs; deliberately not offered (legacy,
+          #   deprecated in our setups);
+          # - submission: talk to Mail Submission Agent (MSA), cf.
+          #   https://doc.dovecot.org/2.4.4/core/config/submission.html#submission-server)
+          #   This protocol can be used to act as proxy for an MTA and add BURL (RFC
+          #   4468), preventing the need of sending a message twice (First: SMTP.
+          #   Second: Copy message via IMAP into a "Sent" folder).
+          #    We currently do not support it, as the tradeoff between added complexity
+          #   and limited client support in 2026 (e.g.
+          #   https://bugzilla.mozilla.org/show_bug.cgi?id=421779) does not make sense
+          #   at this time. We may add support later if client adoption improves.
+          protocols: "imap lmtp sieve"
+
+          # Show the user and IP address in process titles (ps) to make debugging
+          # easier. This is useful for identifying who is using IMAP processes, e.g.
+          # with shared mailboxes, setups where the same UID is used for multiple
+          # accounts, or when debugging stuck IMAP authentication.
+          # WARNING: Enable this only on dedicated systems where non-admin users cannot
+          # log in.
+          verbose_proctitle: true
+
+          # The use of the TZ environment variable can dramatically reduce the number of
+          # system calls and kernel context switches performed by the application so we
+          # pin the timezone information (TZ variable) for all Dovecot processes.
+          # More information:
+          # https://doc.dovecot.org/2.3/configuration_manual/system_calls_optimization/
+          import_environment:
+            TZ: ":/etc/localtime"
+
+
+          ##### Authentication
+
+          # Space separated list of authentication mechanisms, e.g.:
+          #   plain login digest-md5 cram-md5 ntlm rpa apop anonymous gssapi otp
+          #   gss-spnego
+          #
+          # Usually the two mechanisms "plain login" make sense as a conservative
+          # starting point. Both PLAIN and LOGIN must be protected by TLS; see also
+          # auth_allow_cleartext.
+          #
+          # LOGIN is technically obsolete. Modern clients should generally be able to
+          # use PLAIN over TLS, but LOGIN is kept for compatibility with legacy clients.
+          # This mainly means old Microsoft Outlook versions and some Microsoft phones,
+          # but can also include embedded or appliance-like clients such as scanners,
+          # printers, or other devices with minimal/old mail stacks.
+          #
+          # CRAM-MD5 does not provide a security benefit, it can even weaken it. It
+          # mainly protects the password from being sent directly over the wire, but TLS
+          # already provides that protection. It can make password storage worse or less
+          # flexible, because Dovecot needs PLAIN or CRAM-MD5-compatible password data
+          # instead of arbitrary normal password hashes. More information:
+          # - Dovecot documentation on authentication mechanisms and password schemes
+          # - RFC 2195 / CRAM-MD5
+          # - "Das Dovecot-Buch", 5.10.2 Die Authentifizierungsmethoden
+          auth_mechanisms: "plain login"
+
+          # Disable LOGIN command and all other plaintext authentications unless SSL/TLS
+          # is used (LOGINDISABLED capability). Note that if the remote IP matches the
+          # local IP (ie. you're connecting from the same computer), the connection is
+          # considered secure and plaintext authentication is still allowed.
+          # Compatibility note: 2.4 syntax, was "disable_plaintext_auth: yes"
+          auth_allow_cleartext: false
+
+          # Belt-and-braces against quoting tricks in LDAP or database filters deeper in
+          # the stack: only allow these characters in usernames. If you want to allow
+          # all characters, set this value to empty. The value of
+          # auth_master_user_separator (if any) must not be listed here.
+          auth_username_chars: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890.-_@"
+
+          # Normalize the login name to lowercase before DB lookups. You can use Dovecot
+          # variables in here. This translation is done after auth_username_translation
+          # changes. Username formatting examples in Dovecot 2.4 syntax:
+          # - %{user | lower}:
+          #   lowercases the full username.
+          # - %{user | username}:
+          #   drops the domain if one was supplied.
+          # - %{user | username}-AT-%{user | domain}:
+          #   changes "user@example.org" into  "user-AT-example.org".
+          auth_username_format: "%{user | lower}"
+
+          # Master users log in as "user*masteruser" (see passdb "masterusers").
+          auth_master_user_separator: "*"
+
+
+          ##### Logging
+
+          # Log failed logins and why they failed.
+          auth_verbose: true
+
+          # Even more verbose logging for debugging purposes. Shows for example SQL or
+          # LDAP queries for easy debugging e.g. with "journalctl -u dovecot"
+          auth_debug: false
+
+          # In case of password mismatches, it is possible to log the passwords and used
+          # scheme. Enabling this also enables auth_debug.
+          auth_debug_passwords: false
+
+          # Enable mail process debugging, shows how mails are getting searches within
+          # a user's mail directory. This can help you figure out why Dovecot isn't
+          # finding your mails.
+          mail_debug: false
+
+
+          ##### TLS (a.k.a. SSL)
+
+          # Notes:
+          # - If you want to use different Certificates per IP and Protocol:
+          #   https://doc.dovecot.org/2.4.4/core/config/ssl.html#multiple-ssl-certificates
+          #   But you will still need a top-level default ssl_server_key_file and
+          #   ssl_server_cert_file, or you will receive errors.
+          #
+          # - We used to pin a RFC 7919 ffdhe2048 DH file in older setups, but omit
+          #   ssl_server_dh_file on purpose now. With OpenSSL 3 (all our target
+          #   platforms) Dovecot negotiates sound DH/ECDHE groups automatically.
+
+          # "required" forces TLS for remote logins (localhost stays exempt). See also
+          # "auth_allow_cleartext".
+          ssl: "required"
+
+          # PEM encoded X.509 SSL/TLS certificate and private key. ADAPT to your
+          # certificate paths (e.g. provisioned by foundata.acmesh).
+          # Compatibility note: 2.4 syntax, were ssl_cert/ssl_key with leading "<".
+          ssl_server_cert_file: "/etc/ssl/certs/imap.example.com/fullchain.pem"
+          ssl_server_key_file: "/etc/ssl/private/imap.example.com/cert.key"
+          ssl_min_protocol: "TLSv1.2"
+
+          # "client" lets the client choose cipher order; modern clients pick well.
+          # Compatibility note: 2.4 syntax, was "ssl_prefer_server_ciphers = no"
+          ssl_server_prefer_ciphers: "client"
+
+
+          ##### Mail location (location of users' mailboxes)
+
+          # 1) Dovecot uses a per-user home directory for user-specific files
+          #
+          # The home directory is not the same as the mail directory configured below.
+          # In this setup, the home directory contains the mail data directory as well
+          # as separate directories for indexes, control files, and volatile files.
+          # Common mail user variables:
+          #
+          #   %{user}             - full username
+          #   %{user | username}  - user part of user@domain; same as %{user} if there
+          #                         is no domain
+          #   %{user | domain}    - domain part of user@domain; empty if there is no
+          #                         domain
+          #
+          # Note: %{home} does not work in userdb queries or templates. Use ~/ instead;
+          # it is expanded later by Dovecot. See the Dovecot documentation on mail user
+          # variables for the full list.
+          #
+          #
+          # 2) Example directory layouts
+          #
+          # A mail directory below the home directory is the more common layout. The
+          # second approach can make administration easier when different data types
+          # should live on different filesystems or storage tiers.
+          #
+          # 1. Mail directory below the user's home directory:
+          #
+          #      home dir in  /var/vmail/example.com/%{user} (== ~)
+          #      mail data in /var/vmail/example.com/%{user}/mail (== ~/mail)
+          #
+          #    A more complete layout could look like this:
+          #
+          #      mail_driver = maildir
+          #      mailbox_list_layout = Maildir++
+          #      mailbox_list_utf8 = yes
+          #      mail_path = ~/mail/data
+          #      mail_index_path = ~/mail/index
+          #      mail_control_path = ~/mail/control
+          #      mail_volatile_path = ~/mail/volatile
+          #
+          # 2. Separate home and mail directories:
+          #
+          #      home dir in  /var/vmail/home/%{user}
+          #      mail data in /var/vmail/mail/%{user}
+          #
+          #    A more complete layout could look like this:
+          #
+          #      mail_driver = maildir
+          #      mailbox_list_layout = Maildir++
+          #      mailbox_list_utf8 = yes
+          #      mail_path = /srv/vmail/data/%{user}
+          #      mail_index_path = /srv/vmail/index/%{user}
+          #      mail_control_path = /srv/vmail/control/%{user}
+          #      mail_volatile_path = /srv/vmail/volatile/%{user}
+          #
+          #
+          # 3) Notes on mbox configuration:
+          #
+          # Do not use it. Seriously.
+          #
+          #
+          # 4) Notes on our Maildir configuration:
+          #
+          # Maildir is robust and intentionally simple.Each message is stored as a
+          # separate file, so damage is usually limited to individual messages. Indexes
+          # can be lost and rebuilt without losing user mail data. It is usually a good
+          # default until an installation actually reaches its limits. As a rule of
+          # thumb, it is reasonable for hundreds to a few thousand active users when
+          # mailbox sizes and folder message counts are controlled. For larger
+          # installations, or for users with very large folders, dbox should be
+          # considered instead.
+          #
+          # The main downsides are:
+          #
+          # - Many small files make filesystem-level backups slower.
+          # - No simple single-instance attachment de-duplication in this Maildir setup.
+          # - No ALT storage support for automatically moving older mail data to
+          #   cheaper, slower storage. Use dbox if this becomes a requirement.
+          #
+          #
+          # 5) mail_index_path, mail_control_path, mail_volatile_path:
+          #
+          # Dovecot can store mailbox data separately from its own indexes, control
+          # files, and volatile files. This provides several advantages:
+          #
+          # - Indexes can be placed on faster storage.
+          # - Administration is cleaner because the directory containing actual message
+          #   data does not also contain Dovecot-internal files such as indexes or
+          #   control files. In disaster-recovery scenarios, this makes it clearer which
+          #   files are user data and which files can be recreated.
+          # - Control files can be placed on a filesystem that is not subject to the same
+          #   storage quota as the mail data, which helps avoid quota-related operational
+          #   issues.
+          # - Volatile files can be placed on suitable local or temporary storage, which
+          #   is especially useful when avoiding locks or temporary files on remote
+          #   filesystems.
+          #
+          #
+          # 6) mailbox_directory_name with FS or Maildir++
+          #
+          # There are automatically created Maildire subdirectories:
+          #
+          # - cur: messages already known to the client
+          # - new: newly delivered messages not yet seen by the client
+          # - tmp: temporary files used while writing or moving messages
+          #
+          # If conflicts (e.g. when users create folders such as "cur", "new", or "tmp"
+          # via IMAP) are a problem for you, read the official docs how to change it:
+          # https://doc.dovecot.org/2.4.4/core/config/mailbox_formats/maildir.html#mailbox-directory-name
+          #
+          #
+          # 7) UID and GID
+          #
+          # This playbook does intentionally not set mail_uid and mail_gid here:
+          #
+          # - We use the same UID and GID for all mail data ("vmail" service user).
+          #   Using per-user IDs makes shared IMAP folders difficult to manage, can run
+          #   into UID limits in larger environments, and complicates storage administration.
+          # - If UID and GID need to be set, it is usually cleaner to return fixed values
+          #   from the LDAP, AD, or SQL userdb lookup.
+          mail_driver: "maildir"
+          mail_home: "/srv/vmail/home/%{user}"
+          mail_path: "~/mail/data"
+          mail_index_path: "~/mail/index"
+          mail_control_path: "~/mail/control"
+          mail_volatile_path: "~/mail/volatile"
+
+          # Folder layout: "fs" stores each IMAP folder as a real directory.
+          #
+          # Compatibility note regarding "fs" and "Maildir++": Even though both are
+          # using the maildir driver, they are NOT interchangeable. Use "fs" for new
+          # installation (this avoids the "."-dotted notation) but stick with
+          # "Maildir++" if you do not want to migrate pre 2.4 Maildir++ layouts yet.
+          mailbox_list_layout: "fs"
+
+          # Store folder names on disk as UTF-8 instead of modified-UTF-7 for "fs" and
+          # "Maildir++" layouts.
+          # Important: changing this setting on an existing installation with non-ASCII
+          # mailbox names requires migration planning, because existing mailbox paths
+          # may no longer match the configured encoding.
+          # Compatibility note: 2.4 syntax, was the ":UTF-8" mail_location option.
+          mailbox_list_utf8: true
+
+          # Disallow mailbox names that might be unsafe to use in filesystems or
+          # potentially allow bypassing ACL checks.
+          mailbox_list_validate_fs_names: true
+
+          # Specify an escape character that it used for encoding special chars in
+          # the mailbox names in storage. This allows users to use characters in that
+          # would otherwise be illegal. For example, "." in default Maildir++ layouts
+          # Compatibility note: In 2.5, this replaces the removed "listescape" plugin.
+          # Using "%" rather than a backslash to prevent confusion because backslash
+          # is already commonly used as an escape character elsewhere and complicates
+          # quoting
+          mailbox_list_storage_escape_char: '%'
+
+          # Plugins loaded globally:
+          # - acl: shared-folder ACLs.
+          # - quota: per-user quota
+          # - mail_compress: transparent gzip of stored mail (was zlib).
+          mail_plugins:
+            acl: true
+            quota: true
+            mail_compress: true
+
+          # gzip on save; gz is widely supported, mature, and easy to inspect with
+          # normal admin tools like zgrep, zless, gunzip, and file; zstd is technically
+          # attractive, but gzip wins on operational ease.
+          mail_compress_write_method: "gz"
+          compress_gz_level: 6
+
+
+          ##### Namespaces
+
+          # You can have private, shared and public namespaces. Private namespaces are
+          # for user's personal mails. Shared namespaces are for accessing other users'
+          # mailboxes that have been shared. Public namespaces are for shared mailboxes
+          # that are managed by sysadmin. If you create any shared or public namespaces
+          # you'll typically also want to enable the ACL plugin, otherwise all users can
+          # access all the shared mailboxes, assuming they have permissions on
+          # filesystem level to do so.
+          #
+          # Additional notes on namespace configurations:
+          #
+          # - separator: Use the same hierarchy separator for all namespaces or some
+          #   clients get confused. User's cannot create folders with the separator in
+          #   the name. Be aware that you cannot simply change the separator after the
+          #   mailserver is live.
+          #   - '/' is usually the recommended one as it probably causes the least
+          #     amount of trouble with different (broken) IMAP clients, even user's
+          #     sometimes complain they cannot use the slash in folder names. This is
+          #     also recommended by Heinlein (cf. Dovecot book, 4.4.1 "Der richtige
+          #     Hierachie-Trenner")
+          #   - '.' is troublesome (at least for shared folders) as usernames often
+          #     contain dots.
+          #   - '^' is troublesome with Mozilla Thunderbird (last checked in Q4 2023).
+          #   - '\' is used by Microsoft Exchange and usually works with Outlook and
+          #     Thunderbird. If '\' has to be used, it needs to be escaped in
+          #     configuration ("\\").
+          #
+          # - prefix: The prefix required to access this namespace including trailing
+          #   separator. This needs to be different for all namespaces. An empty prefix
+          #   in the inbox=yes namespace one allows folders like "Sent" on the same
+          #   level.
+          #
+          # - subscriptions: true signals the namespace handles its own subscriptions.
+          #   If set to false, the parent namespace handles them (empty prefix should
+          #   always have this as "subscriptions: true")
+          #
+          # - inbox: There can be only one INBOX, this setting defines which namespace
+          #   has it.
+          #
+          # - hidden: false, list: true: Do not hide the namespace to clients via IMAP
+          #   NAMESPACE extension and show this namespace with LIST command.
+          #
+          # - location: Mail location for other users' mailboxes, defaults to
+          #   mail_location when unset. ATTENTION: "location" instead of "mail_location"
+          #   is used to overwrite the mail_location default value.
+
+          # Private INBOX
+          "namespace inbox":
+            type: "private"
+            separator: "/"
+            prefix: ""
+            subscriptions: true
+            inbox: true
+            hidden: false
+            list: true
+            # Auto-created special-use mailboxes.
+            "mailbox Archive":
+              auto: "subscribe"
+              special_use: '\Archive'
+            "mailbox Drafts":
+              auto: "subscribe"
+              special_use: '\Drafts'
+            "mailbox Junk":
+              auto: "no"
+              special_use: '\Junk'
+            "mailbox Trash":
+              auto: "subscribe"
+              special_use: '\Trash'
+            "mailbox Sent":
+              auto: "subscribe"
+              special_use: '\Sent'
+            # Take care that localized, wrong duplicates at least have the correct
+            # flags (auto: "no" == mark, but not auto-create/subscribe)
+            "mailbox \"Gelöschte Elemente\"":
+              auto: "no"
+              special_use: '\Trash'
+            "mailbox \"Sent Messages\"":
+              auto: "no"
+              special_use: '\Sent'
+            "mailbox \"Gesendete Elemente\"":
+              auto: "no"
+              special_use: '\Sent'
+
+          # Shared namespace: access other users' mailboxes shared via ACL, visible
+          # under "Shared/<owner>/". The owner in the prefix is the "$user" template
+          # variable.
+          #
+          # Per-namespace mail location:
+          #
+          # - mail data lives in the OWNER's home (%{owner_home});
+          # - the per-user PRIVATE index/control/volatile live in the LOGGED-IN
+          #   user's home (~/), keyed by owner (%{owner_user}), so every user
+          #   gets their OWN \Seen and other private flags on shared folders.
+          #
+          # mailbox_list_layout / mailbox_list_utf8 are inherited from the global
+          # settings above.
+          #
+          # Compatibility note: 2.4.0 changed shared-namespace prefixes to the
+          # "$user"/"$username"/"$domain" template variables (was "%%u"/"%%n"/"%%d").
+          # The following is the 2.4 replacement for the old
+          # "location = maildir:...:INDEXPVT=...:CONTROL=...:VOLATILEDIR="
+          "namespace shared":
+            type: "shared"
+            separator: "/"
+            prefix: "Shared/$user/"
+            subscriptions: true
+            inbox: false
+            hidden: false
+            list: "children"
+            mail_driver: "maildir"
+            mail_path: "%{owner_home}/mail/data"
+            mail_index_private_path: "~/shared/index/%{owner_user}"
+            mail_control_path: "~/shared/control/%{owner_user}"
+            mail_volatile_path: "~/shared/volatile/%{owner_user}"
+
+          # Public namespace: admin-managed shared mailboxes under Public/.
+          #
+          # The mail data lives at one fixed location, but the per-user PRIVATE
+          # index/control/volatile live in each logged-in user's home (~/), so every
+          # user keeps their OWN \Seen flags on public folders too.
+          #
+          # To use SHARED flags instead (one common read state for everyone, e.g. an
+          # announcements folder where "read" is global), DROP the three
+          # per-user "~/..." settings below (mail_index_private_path, mail_control_path,
+          # mail_volatile_path). With no per-user private index, \Seen/\Flagged/... then
+          # live in the public mailbox's own (shared) index and are common to all users.
+          #
+          # Attention: the index and control locations must match - do NOT keep one
+          # per-user and the other shared, or Dovecot errors.
+          "namespace public":
+            type: "public"
+            separator: "/"
+            prefix: "Public/"
+            subscriptions: true
+            inbox: false
+            hidden: false
+            list: "children"
+            # No per-user ACL bookkeeping for the public namespace.
+            acl_ignore: true
+            mail_driver: "maildir"
+            mail_path: "/srv/vmail/public/mail/data"
+            mail_index_private_path: "~/public/index"
+            mail_control_path: "~/public/control"
+            mail_volatile_path: "~/public/volatile"
+
+          # Show shared INBOX as "Shared/user/INBOX" (avoids confusion when sharing
+          # subfolders) instead of "Shared/user"
+          mail_shared_explicit_inbox: true
+
+
+          ##### ACL
+          acl_driver: "vfile"
+
+          # Master users are still subject to ACLs by default; acl_user=%{user} gives
+          # the master user the same ACLs as the user they log in as.
+          acl_user: "%{user}"
+
+          # Dictionary listing which users shared what (must be readable by the
+          # unprivileged imap process; lives on the mail partition here).
+          acl_sharing_map:
+            "dict file":
+              path: "/srv/vmail/db/shared-mailboxes.db"
+
+
+          ##### Services
+
+          "service imap-login":
+            "inet_listener imap":
+              port: 143 # plain IMAP + STARTTLS
+            "inet_listener imaps":
+              port: 993 # implicit TLS
+              ssl: true
+
+          # LMTP: how Postfix delivers mail to Dovecot. Postfix main.cf:
+          #   transport: "example.com lmtp:unix:/var/spool/postfix/private/dovecot-lmtp"
+          "service lmtp":
+            'unix_listener /var/spool/postfix/private/dovecot-lmtp':
+              mode: "0660"
+              group: "postfix"
+              user: "postfix"
+
+          # SASL auth socket for Postfix submission. Postfix main.cf:
+          #   smtpd_sasl_type = dovecot ; smtpd_sasl_path = private/auth
+          "service auth":
+            'unix_listener /var/spool/postfix/private/auth':
+              mode: "0660"
+              group: "postfix"
+              user: "postfix"
+          "service managesieve-login":
+            "inet_listener sieve":
+              port: 4190
+
+          # Quota warning: invoked by the quota "warning" rules below to mail the user
+          # when they cross a threshold. Script is rendered by the role
+          # (run_dovecot_external_files.quota_warning_script).
+          "service quota-warning":
+            executable: "script /usr/local/bin/dovecot-quota-warning.sh"
+            user: "dovecot"
+            "unix_listener quota-warning":
+              mode: "0660"
+              group: "vmail"
+              user: "vmail"
+
+          # Quota policy service so Postfix can reject over-quota recipients at RCPT
+          # time (avoids backscatter). Postfix main.cf:
+          #   check_policy_service inet:127.0.0.1:12340
+          "service quota-status":
+            executable: "quota-status -p postfix"
+            "inet_listener status":
+              port: 12340
+            client_limit: 1
+
+
+          ##### Per-protocol plugins
+
+          # Dovecot 2.4 merges these per-protocol blocks with the global mail_plugins
+          # above (no "$mail_plugins" needed).
+          "protocol lmtp":
+            mail_plugins:
+              sieve: true # run Sieve filters on delivery
+
+          "protocol imap":
+            # (The source loaded "imap_zlib" for on-the-wire IMAP compression;
+            # Dovecot 2.4 has COMPRESS=DEFLATE built into core, so it is dropped.)
+            mail_plugins:
+              imap_acl: true # let users manage shared-folder ACLs
+              imap_quota: true # expose quota to clients
+              imap_sieve: true # run Sieve from IMAP events
+
+
+          ##### Sieve
+          sieve_plugins:
+            sieve_imapsieve: true
+
+          # Personal Sieve scripts stored as files in the user's home (was
+          # "sieve = file:~/sieve;active=~/sieve.active").
+          "sieve_script personal":
+            sieve_script_driver: "file"
+            sieve_script_path: "~/sieve"
+            sieve_script_active_path: "~/sieve.active"
+          sieve_user_log_path: "~/sieve.log"
+
+          # Enable the "enotify" extension (RFC 5435) for the notify action. The source
+          # used "sieve_extensions = +notify"; the correct modern name is "enotify"
+          # ("notify" is ignored by Pigeonhole 2.4).
+          sieve_extensions:
+            enotify: true
+
+          # These intentionally use the new 2.4 setting names (the source's plugin{}
+          # forms have no automatic converter: sieve_quota_max_scripts became
+          # sieve_quota_script_count, etc.).
+          sieve_max_script_size: "512k"
+          sieve_max_actions: 64
+          sieve_max_redirects: 4
+          sieve_quota_script_count: 100
+
+
+          ##### Quota
+
+          # One quota root, storage-only.
+          'quota "User quota"':
+            quota_driver: "count"
+            quota_storage_size: "25G"
+            quota_storage_grace: "150M"
+            quota_mail_size: "100M"
+            quota_exceeded_message: "Mailbox is over quota / Postfach ist voll"
+            # Warn the user at increasing fill levels (highest first).
+            "warning warn-99":
+              quota_storage_percentage: 99
+              "execute quota-warning":
+                args: "99 %{user}"
+            "warning warn-95":
+              quota_storage_percentage: 95
+              "execute quota-warning":
+                args: "95 %{user}"
+            "warning warn-90":
+              quota_storage_percentage: 90
+              "execute quota-warning":
+                args: "90 %{user}"
+            "warning warn-80":
+              quota_storage_percentage: 80
+              "execute quota-warning":
+                args: "80 %{user}"
+
+          # Answers the quota-status policy service gives Postfix. DUNNO allows Postfix
+          # further processing; never use OK/PERMIT here.
+          quota_status_success: "DUNNO"
+          quota_status_nouser: "DUNNO"
+          quota_status_overquota: "552 5.2.2 Mailbox is over quota"
+
+
+          ##### LDAP / Active Directory connection (shared by the ldap pass/userdb)
+
+          # ADAPT all of these to your directory.
+          ldap_uris: "ldaps://dc1.ad.example.com:636"
+          ldap_starttls: false # using ldaps:// here, so no STARTTLS
+          ldap_base: "OU=common,DC=ad,DC=example,DC=com"
+          ldap_scope: "subtree"
+          ldap_auth_dn: "CN=svc-mail,OU=service,DC=ad,DC=example,DC=com"
+          # SECURITY: keep this in Ansible Vault.
+          ldap_auth_dn_password: "{{ vault_dovecot_ldap_bind_password | default('CHANGE-ME-USE-VAULT') }}"
+
+
+          ##### mbox-specific settings (just for safety, please use other storage formats!)
+
+          # Which locking methods to use for locking mbox. There are four available:
+          # - dotlock: Create <mailbox>.lock file. This is the oldest and most NFS-safe
+          #   solution. If you want to use /var/mail/ like directory, the users will
+          #   need write access to that directory.
+          # - dotlock_try: Same as dotlock, but if it fails because of permissions or
+          #   because there isn't enough disk space, just skip it.
+          # - fcntl: Use this if possible. Also works with NFS if lockd is used.
+          # - flock: May not exist in all systems. Doesn't work with NFS.
+          # - lockf: May not exist in all systems. Doesn't work with NFS.
+          #
+          # You can use multiple locking methods; if you do the order they're declared
+          # in is important to avoid deadlocks if other MTAs/MUAs are using multiple
+          # locking methods as well. Some operating systems don't allow using some of
+          # them simultaneously.
+          #
+          # The Debian value for mbox_write_locks differs from upstream Dovecot. It is
+          # changed to be compliant with Debian Policy (section 11.6) for NFS safety:
+          # - Dovecot: mbox_write_locks = dotlock fcntl
+          # - Debian:  mbox_write_locks = fcntl dotlock
+          mbox_read_locks: "fcntl"
+          mbox_write_locks: "fcntl dotlock"
+
+
+          ##### mdbox-specific settings
+
+          # no mdbox-specific settings right now
+
+
+          ##### Mail attachment-specific settings
+
+          # sdbox and mdbox support saving mail attachments to external files, which
+          # also allows single instance storage for them. Other backends don't support
+          # this for now.
+
+          # no mail_attachment*-specific settings right now
+
+
+        ##### Password and user databases
+
+        # Dovecot needs userdb and passdb lookups at several places:
+        #
+        #                         ┌────────────────────────────────────┐
+        #                         │                                    │
+        #  ┌──────┐   Login  ┌────┴───┐          ┌──────────────────┐  │
+        #  │ User ├──────────►  IMAP  ├────┬─────►      passdb      │  │
+        #  └──────┘          └────┬───┘    │     │  check password  │  │
+        #                         │        │     └──────────────────┘  │
+        #                         │        │                           │
+        #                         │        │                           │
+        #                         │        │     ┌──────────────────┐  │
+        #  ┌───────┐         ┌────┴───┐    └─────►     userdb       │  │
+        #  │ Email ├─────────►  LMTP  │──────────► determines $UID, │  │
+        #  └───────┘         └────┬───┘          │ $GUID and $HOME  │  │
+        #                         │              └──────────────────┘  │
+        #                         │                                    │
+        #                         └────────────────────────────────────┘
+        #
+        # Prefetching userdb fields during passdb lookup can avoid a second userdb
+        # lookup after successful IMAP/POP3 authentication. In Dovecot 2.4 this is done
+        # by returning passdb fields with userdb_ prefixes, e.g. userdb_home,
+        # userdb_uid and userdb_gid, and placing userdb prefetch before the real userdb.
+        # This only works when passdb actually performs a lookup, such as LDAP auth-bind
+        # with DN lookup via passdb_ldap_filter, or LDAP password lookup. It does not
+        # work with passdb_ldap_bind_userdn template mode, because that mode binds
+        # directly as the user and no LDAP attributes are looked up.
+        #
+        # Keep a real userdb, such as ldap/static/passwd, after prefetch. Services
+        # like LMTP/LDA/doveadm may need userdb lookups without a preceding passdb
+        # login lookup, and userdb prefetch alone cannot resolve those users.
+        #
+        # passdb (verify password) authentication chain (order matters).
+        #
+        # NOTE: keep each LDAP filter on ONE line (no spaces between components).
+        # An LDAP filter like "(& (a)(b))" with whitespace is invalid.
+        run_dovecot_passdbs:
+          # Master users FIRST (the usual Dovecot order): a master login
+          # ("user*masteruser") is checked here, so it does not first try and fail
+          # against AD. "master: true" makes this passdb a list of master users
+          # who can then log in as anyone else. result_success = continue so the
+          # destination user is still verified by the LDAP passdb below before
+          # access is granted. ACLs still apply to master users (acl_user above
+          # gives a master the target user's ACLs).
+          - name: "masterusers"
+            driver: "passwd-file"
+            master: true
+            passwd_file_path: "/etc/dovecot/dovecot-masterusers-passwd" # see run_dovecot_external_files['master_users']
+            result_success: "continue"
+          # ...then Active Directory (auth-bind with DN lookup):
+          #   1. Dovecot searches AD with passdb_ldap_filter (a real passdb LDAP
+          #      lookup);
+          #   2. the returned DN is used to bind as the user to verify the password.
+          # Because step 1 IS a lookup, we return userdb_* fields here so the
+          # "prefetch" userdb below resolves the user WITHOUT a second LDAP query
+          # for successful IMAP/POP3 logins. (This is why prefetch is applicable:
+          # it would NOT work with passdb_ldap_bind_userdn template mode, which
+          # binds directly without an attribute lookup.)
+          # The "user" field canonicalizes the login to the AD mail value
+          # (lowercased), so "User@Example.com" / alias / master logins all map
+          # to one identity and home.
+          # Login filter: only a real mailbox address of an enabled, group-member
+          # account may log in (stricter than the userdb filter below).
+          - name: "ldap"
+            driver: "ldap"
+            passdb_ldap_bind: true
+            passdb_ldap_filter: >-
+              (&(objectClass=user)(objectCategory=person)(mail=%{user})(!(userAccountControl:1.2.840.113556.1.4.803:=2))(memberOf:1.2.840.113556.1.4.1941:=CN=SERVICE_email_ALLOW,OU=group,DC=ad,DC=example,DC=com))
+            fields:
+              user: "%{ldap:mail | lower}"
+              userdb_home: "/srv/vmail/home/%{ldap:mail | lower}"
+              userdb_uid: "vmail"
+              userdb_gid: "vmail"
+          # ...then local shadow as a fallback for system accounts.
+          - name: "shadow"
+            driver: "shadow"
+
+        # userdb (resolve uid/gid/home) chain.
+        run_dovecot_userdbs:
+          # Use the userdb_* fields prefetched by the LDAP passdb above -> no
+          # second LDAP lookup for successful IMAP/POP3 logins.
+          - driver: "prefetch"
+          # A real userdb is still required after prefetch: LMTP/LDA/doveadm and
+          # other lookups resolve users WITHOUT a preceding passdb login lookup,
+          # which prefetch alone cannot serve. ldap_connection_group gives these
+          # userdb lookups their own LDAP connection, separate from the auth-bind
+          # connections (recommended when combining auth binds with an LDAP userdb).
+          - driver: "ldap"
+            ldap_connection_group: "userdb"
+            # Broader than the login filter: also resolves the canonical name and
+            # alias/old addresses (sAMAccountName, proxyAddresses, both cases) for
+            # delivery and administrative lookups.
+            userdb_ldap_filter: >-
+              (&(objectClass=user)(objectCategory=person)(|(sAMAccountName=%{user})(mail=%{user})(proxyAddresses=smtp:%{user})(proxyAddresses=SMTP:%{user}))(!(userAccountControl:1.2.840.113556.1.4.803:=2)))
+            # Static identity for every user (one shared vmail uid/gid); home is
+            # derived from the AD mail attribute (lowercased); "user" canonicalizes
+            # the resolved login the same way as the passdb above.
+            # Compatibility note: 2.4.0 syntax, replaces the old "user_attrs = =home=..,=uid=vmail,=gid=vmail".
+            fields:
+              user: "%{ldap:mail | lower}"
+              home: "/srv/vmail/home/%{ldap:mail | lower}"
+              uid: "vmail"
+              gid: "vmail"
+          - driver: "passwd"
+
+
+        ##### External files rendered by the role
+
+        run_dovecot_external_files:
+
+          # Master-users passwd-file consumed by the "masterusers" passdb above.
+          # Generate hashes with: doveadm pw -s BLF-CRYPT
+          master_users:
+            enabled: true
+            path: "/etc/dovecot/dovecot-masterusers-passwd"
+            entries:
+              - username: "admin"
+                password_hash: "{BLF-CRYPT}$2y$05$CHANGE-ME-USE-doveadm-pw" # ADAPT (Vault)
+
+          # Quota-warning script invoked by the "service quota-warning" above
+          quota_warning_script:
+            enabled: true
+            path: "/usr/local/bin/dovecot-quota-warning.sh"
+            from: "IT <it@example.com>"
+            subject: "Quota warning (mailbox ${PERCENT}% full)"

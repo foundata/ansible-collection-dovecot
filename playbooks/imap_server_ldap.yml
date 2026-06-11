@@ -34,6 +34,31 @@
 - name: "Configure Dovecot (IMAP/LMTP/ManageSieve, LDAP/AD auth)"
   hosts: "mailservers" # ADAPT: your inventory group
   become: true
+  pre_tasks:
+
+    # The role provisions the mail storage root (/srv/vmail) and the vmail account,
+    # but a few application-level subdirectories the config below references are
+    # this playbook's responsibility (mail storage provisioning is out of scope for
+    # the role - see the header):
+    #   /srv/vmail/db              the shared-mailbox ACL dict (acl_sharing_map)
+    #   /srv/vmail/public/mail/...  backing storage for the public namespace
+    # Create them before the role starts Dovecot. Ownership uses the NUMERIC vmail
+    # UID/GID on purpose: the vmail account is created by the role, which runs after
+    # these pre_tasks, so the name may not resolve yet. Keep these IDs in sync with
+    # run_dovecot_mail_user_uid / run_dovecot_mail_group_gid below.
+    - name: "Provision mail subdirectories the Dovecot config references"
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: "directory"
+        owner: 10000
+        group: 10000
+        mode: "u=rwx,g=rx,o=" # 0750
+      loop:
+        - "/srv/vmail/db"
+        - "/srv/vmail/public"
+        - "/srv/vmail/public/mail"
+        - "/srv/vmail/public/mail/data"
+
   tasks:
 
     - name: "Include the foundata.dovecot.run role"
@@ -538,8 +563,15 @@
           ##### Services
 
           "service imap-login":
+            # Port 143 = plain IMAP upgraded via STARTTLS; port 993 = implicit TLS.
+            # With ssl = required + auth_allow_cleartext = false (set above) the server
+            # REFUSES credentials before TLS, so this is safe by default. Caveat: a
+            # broken/misconfigured client can still transmit its password in the clear
+            # on 143 BEFORE issuing STARTTLS - the server rejects it, but the secret
+            # has already crossed the wire. If every client supports implicit TLS,
+            # hardening option: drop this "inet_listener imap" and offer 993 only.
             "inet_listener imap":
-              port: 143 # plain IMAP + STARTTLS
+              port: 143
             "inet_listener imaps":
               port: 993 # implicit TLS
               ssl: true
@@ -575,13 +607,25 @@
               user: "vmail"
 
           # Quota policy service so Postfix can reject over-quota recipients at RCPT
-          # time (avoids backscatter). Postfix main.cf:
-          #   check_policy_service inet:127.0.0.1:12340
+          # time (avoids backscatter). Exposed as a Unix socket in Postfix's private
+          # spool dir (like the LMTP and SASL-auth sockets above), so it is never
+          # reachable over the network. Postfix main.cf:
+          #   smtpd_recipient_restrictions = ... check_policy_service unix:private/quota-status
+          #
+          # If Postfix runs on a DIFFERENT host you need TCP instead - then use an
+          # inet_listener but PIN it to a specific address. Dovecot's global "listen"
+          # defaults to "*, ::" (every interface), so a bare "inet_listener status {
+          # port = 12340 }" would expose this policy service on all interfaces:
+          #   "inet_listener status":
+          #     port: 12340
+          #     listen: "127.0.0.1" # or the specific internal IP Postfix connects to
           "service quota-status":
             executable: "quota-status -p postfix"
-            "inet_listener status":
-              port: 12340
             client_limit: 1
+            'unix_listener /var/spool/postfix/private/quota-status':
+              mode: "0660"
+              group: "postfix"
+              user: "postfix"
 
 
           ##### Per-protocol plugins

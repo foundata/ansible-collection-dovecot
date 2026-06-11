@@ -202,6 +202,10 @@
           executable: "quota-status -p postfix"
           "inet_listener status":
             port: 12340
+            # Pin to loopback: Dovecot's global "listen" defaults to all interfaces,
+            # so an unpinned policy-service port would be network-exposed. Also covers
+            # the per-listener "listen" override (2.4 form) in CI.
+            listen: "127.0.0.1"
           client_limit: 1
         "protocol imap":
           # Per-protocol boollist in block form; Dovecot merges it with the

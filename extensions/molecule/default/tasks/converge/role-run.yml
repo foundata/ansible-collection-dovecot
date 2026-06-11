@@ -32,13 +32,18 @@
 # Plaintext: MoleculeTest1234__   (hash: openssl passwd -6 -salt moltest01 ...)
 - name: "Molecule | Converge | Define passwd-file and LDAP test identities"
   ansible.builtin.set_fact:
-    # passwd-file user (password check + uid/gid/home from /etc/dovecot/users)
-    __testing_dovecot_imap_user: "johndoe"
+    # passwd-file user. A full address (user@domain) so the real Postfix MTA set
+    # up in the prepare stage can route mail for the domain to Dovecot's LMTP.
+    # uid/gid/home come from /etc/dovecot/users.
+    __testing_dovecot_imap_user: "johndoe@example.test"
     __testing_dovecot_imap_password: "MoleculeTest1234__"
     __testing_dovecot_imap_password_hash: "{CRYPT}$6$moltest01$5yRZcN98Aow6VxIDKYULnZNnuG85SQMUKKzQrh2qtzYyXfrJIOPuz.Jr20kXrZHOAwwTK1.CFLHgE7oEElZ2F0"
     __testing_dovecot_user_home: "/srv/vmail/johndoe"
     __testing_dovecot_passwd_file: "/etc/dovecot/users"
     __testing_dovecot_lmtp_socket: "/run/dovecot/lmtp-test"
+    # Domain Postfix (prepare) accepts + routes to Dovecot's postfix-private LMTP
+    # socket, for the end-to-end SMTP -> Postfix -> Dovecot delivery test.
+    __testing_dovecot_mail_domain: "example.test"
     # LDAP user (seeded into the localhost slapd by the prepare stage). Logs in
     # by falling through the passwd-file passdb (where it is unknown) to ldap.
     __testing_dovecot_ldap_user: "ldapuser"
@@ -59,6 +64,7 @@
       __testing_dovecot_imap_password: "{{ __testing_dovecot_imap_password }}"
       __testing_dovecot_user_home: "{{ __testing_dovecot_user_home }}"
       __testing_dovecot_lmtp_socket: "{{ __testing_dovecot_lmtp_socket }}"
+      __testing_dovecot_mail_domain: "{{ __testing_dovecot_mail_domain }}"
 
       # Persist the LDAP test identity for the verify stage.
       __testing_dovecot_ldap_user: "{{ __testing_dovecot_ldap_user }}"
@@ -104,16 +110,31 @@
         # is not forced into a TLS-only login.
         auth_allow_cleartext: true
         auth_mechanisms: "plain login"
+        # Master users: an admin authenticates as any user via
+        # "<loginuser>*<masteruser>" + the master password. The verify stage
+        # performs a real master login against the master passdb below.
+        auth_master_user_separator: "*"
         mail_driver: "maildir"
         mail_path: "~/Maildir"
         mail_home: "/srv/vmail/%{user}"
         first_valid_uid: 8000
         last_valid_uid: 8000
-        # Boollist setting in the Dovecot 2.4 block form (a dict renders as
-        # "mail_plugins { quota = yes }"); also covers the plugin->package scan.
+        # Load the same global plugins the example playbook uses (block form),
+        # so the verify stage proves each one actually loads at runtime, not just
+        # that it renders. acl: shared-folder ACLs; quota: per-user quota;
+        # mail_compress: transparent on-disk gzip.
         mail_plugins:
+          acl: true
           quota: true
+          mail_compress: true
+        mail_compress_write_method: "gz"
         log_path: "/var/log/dovecot.log"
+        # ACL plugin support (the dict path is created in converge below).
+        acl_driver: "vfile"
+        acl_user: "%{user}"
+        acl_sharing_map:
+          "dict file":
+            path: "/srv/vmail/db/shared-mailboxes.db"
         "namespace inbox":
           inbox: true
           separator: "/"
@@ -124,6 +145,27 @@
           "mailbox Sent":
             auto: "subscribe"
             special_use: '\Sent'
+        # Shared + public namespaces (matches the example playbook; gives the acl
+        # plugin a meaningful scope).
+        "namespace shared":
+          type: "shared"
+          separator: "/"
+          # Owner template variable (2.4 shared-namespace prefix uses $user).
+          prefix: "Shared/$user/"
+          subscriptions: true
+          inbox: false
+          hidden: false
+          list: "children"
+        "namespace public":
+          type: "public"
+          separator: "/"
+          prefix: "Public/"
+          subscriptions: true
+          inbox: false
+          hidden: false
+          list: "children"
+          acl_ignore: true
+        mail_shared_explicit_inbox: true
         "service imap-login":
           "inet_listener imap":
             port: 143 # plain IMAP + STARTTLS
@@ -132,16 +174,69 @@
             ssl: true
         "service lmtp":
           # Relative listener name -> socket lands at <base_dir>/lmtp-test
-          # (/run/dovecot/lmtp-test). The verify stage speaks LMTP to it to
-          # deliver a test message; 0666 lets the test client connect.
+          # (/run/dovecot/lmtp-test). The verify stage speaks LMTP to it directly
+          # to deliver a test message; 0666 lets the test client connect.
           "unix_listener lmtp-test":
             mode: "0666"
+          # The production-style socket Postfix delivers to (the prepare stage's
+          # Postfix routes the mail domain here via lmtp:unix:private/dovecot-lmtp).
+          # Postfix creates /var/spool/postfix/private during prepare, so the dir
+          # exists by the time the role creates this socket.
+          "unix_listener /var/spool/postfix/private/dovecot-lmtp":
+            user: "postfix"
+            group: "postfix"
+            mode: "0660"
+        # Quota-warning service, wired to the script the role renders via
+        # run_dovecot_external_files.quota_warning_script and triggered by the
+        # quota "warning" rule below.
+        "service quota-warning":
+          executable: "script /usr/local/bin/dovecot-quota-warning.sh"
+          user: "dovecot"
+          "unix_listener quota-warning":
+            mode: "0660"
+            group: "vmail"
+            user: "vmail"
+        # Quota policy service for Postfix (exercises the inet_listener + the
+        # quota-status backend; not actually queried in this test).
+        "service quota-status":
+          executable: "quota-status -p postfix"
+          "inet_listener status":
+            port: 12340
+          client_limit: 1
         "protocol imap":
           # Per-protocol boollist in block form; Dovecot merges it with the
           # global mail_plugins (no "$mail_plugins" needed in 2.4), so imap gets
-          # quota + imap_quota.
+          # acl + quota + mail_compress (global) plus these imap-side plugins.
           mail_plugins:
+            imap_acl: true
             imap_quota: true
+            imap_sieve: true
+        "protocol lmtp":
+          # Run Sieve filters on delivery (loads the sieve plugin in lmtp).
+          mail_plugins:
+            sieve: true
+
+        # Sieve interpreter plugins + personal script storage (loaded during
+        # LMTP delivery and on IMAP events).
+        sieve_plugins:
+          sieve_imapsieve: true
+        "sieve_script personal":
+          sieve_script_driver: "file"
+          sieve_script_path: "~/sieve"
+
+        # A quota root so imap_quota/GETQUOTAROOT has something to report, with a
+        # warning rule that drives the quota-warning service above.
+        'quota "User quota"':
+          quota_driver: "count"
+          quota_storage_size: "1G"
+          quota_storage_grace: "10M"
+          "warning warn-90":
+            quota_storage_percentage: 90
+            "execute quota-warning":
+              args: "90 %{user}"
+        quota_status_success: "DUNNO"
+        quota_status_nouser: "DUNNO"
+        quota_status_overquota: "552 5.2.2 Mailbox is over quota"
 
         # LDAP connection (localhost slapd from the prepare stage), shared by the
         # ldap passdb/userdb below. Exercises the role's auth-backend package
@@ -161,16 +256,41 @@
       # "name" is omitted so the block name defaults to the driver
       # (-> "passdb passwd-file {"); passwd_file_path is not driver-scoped, so
       # it resolves regardless.
-      # Auth chain: passwd-file first (johndoe), then LDAP. A user unknown to the
-      # passwd-file (ldapuser) falls through to the ldap passdb/userdb.
+      # Auth chain: master users first (admin-as-anyone), then passwd-file
+      # (johndoe), then LDAP. A user unknown to the passwd-file (ldapuser) falls
+      # through to the ldap passdb/userdb. This mirrors the example playbook's
+      # master-first + prefetch structure so CI exercises both.
       run_dovecot_passdbs:
+        # Master users first. result_success: continue is required so auth
+        # proceeds to resolve the *login* user after the master user has been
+        # authenticated; functionally confirmed on Dovecot 2.4 (the master
+        # password is accepted, the login user's own password is NOT). The
+        # passwd-file is the one the role renders from run_dovecot_external_files
+        # below (default path).
+        - name: "masterusers"
+          driver: "passwd-file"
+          master: true
+          passwd_file_path: "/etc/dovecot/passwd.masterusers"
+          result_success: "continue"
         - driver: "passwd-file"
           passwd_file_path: "/etc/dovecot/users"
         - driver: "ldap"
           passdb_ldap_bind: true
           passdb_ldap_filter: "(&(objectClass=inetOrgPerson)(uid=%{user}))"
+          # Return userdb_* fields so the "prefetch" userdb below resolves the
+          # user straight from this bind (no second LDAP round-trip), exactly as
+          # the example playbook does. The ldap userdb remains as a fallback for
+          # lookups that do not pass through passdb (LMTP/doveadm).
+          fields:
+            userdb_uid: "vmail"
+            userdb_gid: "vmail"
+            userdb_home: "/srv/vmail/%{user}"
 
       run_dovecot_userdbs:
+        # prefetch first: consume the userdb_* fields the ldap passdb returned
+        # during the bind. Users without prefetch data (the passwd-file johndoe)
+        # fall through to the passwd-file userdb below.
+        - driver: "prefetch"
         - driver: "passwd-file"
           passwd_file_path: "/etc/dovecot/users"
         - driver: "ldap"
@@ -244,3 +364,14 @@
     # passdb/userdb file must be readable by that group, not root-only.
     group: "dovecot"
     mode: "u=rw,g=r,o=" # 0640, contains a password hash
+
+
+# Directory holding the acl_sharing_map dict file. The unprivileged mail process
+# (running as vmail) writes it, so it must exist and be owned by vmail.
+- name: "Molecule | Converge | Create the ACL sharing-map directory"
+  ansible.builtin.file:
+    path: "/srv/vmail/db"
+    state: "directory"
+    owner: "vmail"
+    group: "vmail"
+    mode: "u=rwx,g=rx,o=" # 0750

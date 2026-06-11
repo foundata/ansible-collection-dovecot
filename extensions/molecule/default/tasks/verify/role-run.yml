@@ -201,6 +201,21 @@
       - "'protocol imap {' in __testing_dovecotconf_decoded"
       # per-protocol boollist block merges with the global mail_plugins
       - "'imap_quota = yes' in __testing_dovecotconf_decoded"
+      # extended plugin/scope coverage (matches the example playbook)
+      - "'acl = yes' in __testing_dovecotconf_decoded"
+      - "'mail_compress = yes' in __testing_dovecotconf_decoded"
+      - "'acl_driver = vfile' in __testing_dovecotconf_decoded"
+      - "'acl_sharing_map {' in __testing_dovecotconf_decoded"
+      - "'namespace shared {' in __testing_dovecotconf_decoded"
+      - "'namespace public {' in __testing_dovecotconf_decoded"
+      - "'imap_acl = yes' in __testing_dovecotconf_decoded"
+      - "'imap_sieve = yes' in __testing_dovecotconf_decoded"
+      - "'protocol lmtp {' in __testing_dovecotconf_decoded"
+      - "'sieve_plugins {' in __testing_dovecotconf_decoded"
+      - "'sieve_script personal {' in __testing_dovecotconf_decoded"
+      - "'quota \"User quota\" {' in __testing_dovecotconf_decoded"
+      - "'service quota-warning {' in __testing_dovecotconf_decoded"
+      - "'service quota-status {' in __testing_dovecotconf_decoded"
       # passdb/userdb blocks (Dovecot 2.4 requires named blocks; with "name"
       # omitted the role uses the driver as the block name -> "passdb passwd-file {")
       - "'passdb passwd-file {' in __testing_dovecotconf_decoded"
@@ -425,7 +440,7 @@
 # (a real LOGIN with the passwd-file passdb) and that mail can be delivered and
 # is retrievable (LMTP -> userdb -> Maildir).
 
-- name: "Molecule | Verify | IMAP LOGIN over implicit TLS (993)"
+- name: "Molecule | Verify | IMAP LOGIN + ACL/QUOTA commands over implicit TLS (993)"
   ansible.builtin.command:
     argv:
       - "{{ __testing_openssl_executable }}"
@@ -434,25 +449,37 @@
       - "127.0.0.1:993"
       - "-quiet"
       - "-crlf"
-    # IMAP dialog: authenticate as the passwd-file user, then log out. -crlf
-    # turns these LFs into CRLFs. -quiet suppresses the handshake noise so
-    # stdout carries the IMAP responses.
-    stdin: "a1 LOGIN {{ __testing_dovecot_imap_user }} {{ __testing_dovecot_imap_password }}\na2 LOGOUT\n"
+    # IMAP dialog: log in, then issue GETQUOTAROOT (needs quota + imap_quota
+    # loaded) and MYRIGHTS (needs acl + imap_acl loaded), then log out. -crlf
+    # turns these LFs into CRLFs; -quiet drops the handshake noise so stdout
+    # carries the IMAP responses (incl. the LOGIN CAPABILITY list).
+    stdin: "a1 LOGIN {{ __testing_dovecot_imap_user }} {{ __testing_dovecot_imap_password }}\na2 GETQUOTAROOT INBOX\na3 MYRIGHTS INBOX\na4 LOGOUT\n"
   changed_when: false
   failed_when: false
   register: __testing_imap_login_result
 
 
-- name: "Molecule | Verify | Assert the IMAP LOGIN succeeded"
+- name: "Molecule | Verify | Assert the IMAP LOGIN and imap-side plugins work"
   ansible.builtin.assert:
     that:
       - "'a1 OK' in __testing_imap_login_result['stdout']"
+      # the LOGIN CAPABILITY advertises ACL + QUOTA -> acl/imap_acl and
+      # quota/imap_quota plugins are loaded for the imap process
+      - "'ACL' in __testing_imap_login_result['stdout']"
+      - "'QUOTA' in __testing_imap_login_result['stdout']"
+      # GETQUOTAROOT succeeds and reports the quota root (quota + imap_quota)
+      - "'a2 OK' in __testing_imap_login_result['stdout']"
+      - "'QUOTAROOT' in __testing_imap_login_result['stdout']"
+      # MYRIGHTS succeeds (acl + imap_acl)
+      - "'a3 OK' in __testing_imap_login_result['stdout']"
     fail_msg: >-
-      IMAP LOGIN as '{{ __testing_dovecot_imap_user }}' over TLS (993) did not
-      succeed (expected an 'a1 OK' tagged response).
+      IMAP LOGIN / ACL / QUOTA as '{{ __testing_dovecot_imap_user }}' over TLS
+      (993) did not behave as expected.
       stdout: {{ __testing_imap_login_result['stdout'] | ansible.builtin.default('') }}
       stderr: {{ __testing_imap_login_result['stderr'] | ansible.builtin.default('') }}
-    success_msg: "IMAP LOGIN as '{{ __testing_dovecot_imap_user }}' over TLS (993) succeeded."
+    success_msg: >-
+      IMAP LOGIN as '{{ __testing_dovecot_imap_user }}' over TLS (993) succeeded and the
+      acl/imap_acl + quota/imap_quota plugins are working (CAPABILITY, GETQUOTAROOT, MYRIGHTS).
 
 
 - name: "Molecule | Verify | Deliver a test message via LMTP (unix socket)"
@@ -539,6 +566,99 @@
       doveadm confirms the LMTP-delivered message is in the INBOX of '{{ __testing_dovecot_imap_user }}'.
 
 
+## Functional: end-to-end SMTP via the Postfix MTA
+#
+# The real production path: submit a message to Postfix over SMTP; Postfix routes
+# the mail domain to Dovecot's postfix-private LMTP socket; Dovecot delivers it
+# to the Maildir. This exercises the socket plumbing the role exposes for an MTA.
+
+- name: "Molecule | Verify | Submit a message to the Postfix MTA over SMTP (127.0.0.1:25)"
+  ansible.builtin.command:
+    argv:
+      - "/usr/bin/python3"
+      - "-c"
+      - |
+        import smtplib, sys
+        rcpt = sys.argv[1]
+        msg = ("From: postfix-e2e@%s\r\n"
+               "To: %s\r\n"
+               "Subject: molecule-postfix-e2e\r\n\r\n"
+               "Delivered end-to-end through Postfix.\r\n" % (rcpt.split("@")[1], rcpt))
+        s = smtplib.SMTP("127.0.0.1", 25, timeout=15)
+        s.sendmail("postfix-e2e@%s" % rcpt.split("@")[1], [rcpt], msg)
+        s.quit()
+        print("SMTP-SUBMITTED-OK")
+      - "{{ __testing_dovecot_imap_user }}"
+  changed_when: true
+  register: __testing_smtp_submit_result
+
+
+- name: "Molecule | Verify | Poll the mailbox until the Postfix-delivered message arrives"
+  ansible.builtin.command:
+    argv:
+      - "{{ __run_dovecot_doveadm_exec_path }}"
+      - "search"
+      - "-u"
+      - "{{ __testing_dovecot_imap_user }}"
+      - "mailbox"
+      - "INBOX"
+      - "subject"
+      - "molecule-postfix-e2e"
+  changed_when: false
+  failed_when: false
+  register: __testing_smtp_search_result
+  until:
+    - (__testing_smtp_search_result['stdout'] | ansible.builtin.trim | ansible.builtin.length) > 0
+  retries: 15
+  delay: 1
+
+
+- name: "Molecule | Verify | Assert the SMTP message was delivered end-to-end (Postfix -> Dovecot LMTP)"
+  ansible.builtin.assert:
+    that:
+      - "'SMTP-SUBMITTED-OK' in __testing_smtp_submit_result['stdout']"
+      - (__testing_smtp_search_result['stdout'] | ansible.builtin.trim | ansible.builtin.length) > 0
+    fail_msg: >-
+      The SMTP message submitted to Postfix did not arrive in
+      '{{ __testing_dovecot_imap_user }}'s INBOX via LMTP.
+      submit stdout: {{ __testing_smtp_submit_result['stdout'] | ansible.builtin.default('') }}
+      submit stderr: {{ __testing_smtp_submit_result['stderr'] | ansible.builtin.default('') }}
+      doveadm search stdout: {{ __testing_smtp_search_result['stdout'] | ansible.builtin.default('') }}
+    success_msg: >-
+      End-to-end SMTP works: Postfix routed the message to Dovecot's LMTP socket
+      and it is in '{{ __testing_dovecot_imap_user }}'s INBOX.
+
+
+## No plugin/module load failures
+#
+# doveconf -c accepts ANY name in mail_plugins without checking the .so exists,
+# so a removed/typo'd plugin only fails at runtime. After exercising IMAP + LMTP
+# (which load all the configured plugins), confirm Dovecot logged no module-load
+# failure.
+
+- name: "Molecule | Verify | Collect recent Dovecot error log"
+  ansible.builtin.command:
+    argv:
+      - "{{ __run_dovecot_doveadm_exec_path }}"
+      - "log"
+      - "errors"
+  changed_when: false
+  failed_when: false
+  register: __testing_doveadm_log_errors
+
+
+- name: "Molecule | Verify | Assert no plugin/module failed to load at runtime"
+  ansible.builtin.assert:
+    that:
+      - "'not found from directory' not in (__testing_doveadm_log_errors['stdout'] | ansible.builtin.default(''))"
+      - "'dlopen' not in (__testing_doveadm_log_errors['stdout'] | ansible.builtin.default(''))"
+    fail_msg: >-
+      Dovecot logged a plugin/module load failure (a configured plugin's .so is
+      missing or failed to load):
+      {{ __testing_doveadm_log_errors['stdout'] | ansible.builtin.default('') }}
+    success_msg: "No plugin/module load failures in the Dovecot error log (all configured plugins loaded)."
+
+
 ## Functional: LDAP-backed login
 #
 # Proves the second link of the auth chain: a user unknown to the passwd-file
@@ -602,3 +722,57 @@
       stdout: {{ __testing_ldap_login_result['stdout'] | ansible.builtin.default('') }}
       stderr: {{ __testing_ldap_login_result['stderr'] | ansible.builtin.default('') }}
     success_msg: "LDAP-backed IMAP LOGIN as '{{ __testing_dovecot_ldap_user }}' over TLS (993) succeeded."
+
+
+# Master users: the converge wires a master passdb (run_dovecot_external_files.
+# master_users -> user "admin", password "molecule-test-only") first in the chain
+# and sets auth_master_user_separator = "*". An admin can therefore log in as any
+# user via "<loginuser>*admin" + the MASTER password. We verify both that this
+# works AND that the login user's own password is NOT accepted via the separator
+# (otherwise the master passdb would be a no-op that merely lets everyone in).
+- name: "Molecule | Verify | Master-user IMAP LOGIN over implicit TLS (993)"
+  ansible.builtin.command:
+    argv:
+      - "{{ __testing_openssl_executable }}"
+      - "s_client"
+      - "-connect"
+      - "127.0.0.1:993"
+      - "-quiet"
+      - "-crlf"
+    # The username carries "*" (a LOGIN list-wildcard) so it must be a quoted
+    # IMAP string, not an atom.
+    stdin: "a1 LOGIN \"{{ __testing_dovecot_imap_user }}*admin\" \"molecule-test-only\"\na2 LOGOUT\n"
+  changed_when: false
+  failed_when: false
+  register: __testing_master_login_result
+
+
+- name: "Molecule | Verify | Master-user IMAP LOGIN with the login user's own password (must fail)"
+  ansible.builtin.command:
+    argv:
+      - "{{ __testing_openssl_executable }}"
+      - "s_client"
+      - "-connect"
+      - "127.0.0.1:993"
+      - "-quiet"
+      - "-crlf"
+    stdin: "a1 LOGIN \"{{ __testing_dovecot_imap_user }}*admin\" \"{{ __testing_dovecot_imap_password }}\"\na2 LOGOUT\n"
+  changed_when: false
+  failed_when: false
+  register: __testing_master_login_negative_result
+
+
+- name: "Molecule | Verify | Assert master-user login works and only with the master password"
+  ansible.builtin.assert:
+    that:
+      - "'a1 OK' in __testing_master_login_result['stdout']"
+      - "'a1 OK' not in __testing_master_login_negative_result['stdout']"
+    fail_msg: >-
+      Master-user IMAP LOGIN as '{{ __testing_dovecot_imap_user }}*admin' did not behave
+      as expected: the master password must succeed and the login user's own password
+      must be rejected via the master separator.
+      master-pw stdout: {{ __testing_master_login_result['stdout'] | ansible.builtin.default('') }}
+      own-pw stdout: {{ __testing_master_login_negative_result['stdout'] | ansible.builtin.default('') }}
+    success_msg: >-
+      Master-user IMAP LOGIN as '{{ __testing_dovecot_imap_user }}*admin' succeeded with the
+      master password and was correctly rejected with the login user's own password.

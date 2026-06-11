@@ -268,3 +268,56 @@
   failed_when:
     - __testing_ldap_seed_result['rc'] not in [0, 68] # 68 == already exists
   no_log: true
+
+
+### Postfix MTA for the end-to-end SMTP -> Postfix -> Dovecot LMTP delivery test
+#
+# Postfix is configured here (before Dovecot exists). Its transport references
+# the LMTP socket via the queue-relative path "private/dovecot-lmtp" (Postfix
+# resolves unix: sockets against $queue_directory and its delivery agents are
+# chrooted), while Dovecot creates it at the absolute path during converge.
+# Installing Postfix now also creates /var/spool/postfix/private so Dovecot can
+# bind the socket there.
+
+# foundata.postfix.run rebuilds the alias database (postalias /etc/aliases), but
+# the minimal Debian/Ubuntu ITT images ship without /etc/aliases. Seed a minimal
+# one first (no-op where it already exists, e.g. Fedora).
+- name: "Molecule | Prepare | Ensure /etc/aliases exists (Postfix builds its alias db)"
+  ansible.builtin.copy:
+    dest: "/etc/aliases"
+    content: |
+      postmaster: root
+      root: root
+    force: false
+    owner: "root"
+    group: "root"
+    mode: "u=rw,g=r,o=r" # 0644
+
+
+- name: "Molecule | Prepare | Configure a Postfix MTA routing the test domain to Dovecot's LMTP"
+  ansible.builtin.include_role:
+    name: "foundata.postfix.run"
+  vars:
+    run_postfix_state: "present"
+    run_postfix_service_state: "enabled"
+    run_postfix_maincf_settings:
+      myhostname: "mail.example.test"
+      mydomain: "example.test"
+      mydestination: "localhost"
+      inet_interfaces: "loopback-only"
+      inet_protocols: "ipv4"
+      # Throwaway test MTA: the test domain has no DNS in the container, so the
+      # role's reject_unknown_{sender,recipient}_domain checks would refuse our
+      # test message. Put permit_mynetworks first in every restriction class that
+      # is evaluated (sender, recipient AND relay) so mail submitted from
+      # 127.0.0.1 (which is in mynetworks) is accepted before those DNS checks;
+      # reject_unauth_destination still prevents open relay.
+      smtpd_sender_restrictions: "permit_mynetworks"
+      smtpd_recipient_restrictions: "permit_mynetworks, reject_unauth_destination"
+      smtpd_relay_restrictions: "permit_mynetworks, reject_unauth_destination"
+    run_postfix_relay_domains_manage: true
+    run_postfix_relay_domains_list:
+      - "example.test"
+    run_postfix_transport_manage: true
+    run_postfix_transport_map:
+      "example.test": "lmtp:unix:private/dovecot-lmtp"

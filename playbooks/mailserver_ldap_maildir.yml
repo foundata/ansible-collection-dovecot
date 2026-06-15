@@ -65,9 +65,10 @@
         fail_msg: >-
           Required variable '{{ item }}' is not set. This playbook ships no default
           for per-deployment identity/secret values (mail domain, TLS certificate
-          paths, LDAP/AD coordinates, LDAP bind password) because none could work
-          everywhere. Set it via inventory / group_vars / host_vars / -e (keep the
-          bind password in Ansible Vault).
+          paths, LDAP/AD coordinates, LDAP bind password, master-user password
+          hash) because none could work everywhere. Set it via inventory /
+          group_vars / host_vars / -e (keep secrets like the LDAP bind password
+          and the master-user hash in Ansible Vault).
         success_msg: "All required deployment parameters are set."
       loop:
         - "dovecot_playbook_mail_domain"
@@ -78,6 +79,7 @@
         - "dovecot_playbook_ldap_bind_dn"
         - "dovecot_playbook_ldap_group_dn"
         - "dovecot_playbook_ldap_bind_password"
+        - "dovecot_playbook_master_admin_password_hash"
 
     - name: "Resolve deployment parameters that have a sensible default (override via inventory/group_vars/-e)"
       ansible.builtin.set_fact:
@@ -89,6 +91,32 @@
         # warning mail (exactly four distinct entries, highest first).
         dovecot_playbook_quota_storage_size: "{{ dovecot_playbook_quota_storage_size | default('25G') }}"
         dovecot_playbook_quota_warn_percentages: "{{ dovecot_playbook_quota_warn_percentages | default([99, 95, 90, 80]) }}"
+        # From address of the quota-warning mails (defaults to it@<mail domain>).
+        dovecot_playbook_quota_warning_from: >-
+          {{ dovecot_playbook_quota_warning_from
+             | default('IT <it@' ~ dovecot_playbook_mail_domain ~ '>') }}
+        # Quota tuning + the user-facing quota messages.
+        dovecot_playbook_quota_storage_grace: "{{ dovecot_playbook_quota_storage_grace | default('150M') }}"
+        dovecot_playbook_quota_mail_size: "{{ dovecot_playbook_quota_mail_size | default('100M') }}"
+        dovecot_playbook_quota_exceeded_message: "{{ dovecot_playbook_quota_exceeded_message | default('Mailbox is over quota / Postfach ist voll') }}"
+        dovecot_playbook_quota_status_overquota: "{{ dovecot_playbook_quota_status_overquota | default('552 5.2.2 Mailbox is over quota') }}"
+        # Quota-warning script path: referenced by BOTH the service executable and
+        # the rendered script's file path, so one knob keeps them in sync. Plus the
+        # warning mail subject.
+        dovecot_playbook_quota_warning_script_path: "{{ dovecot_playbook_quota_warning_script_path | default('/usr/local/bin/dovecot-quota-warning.sh') }}"
+        dovecot_playbook_quota_warning_subject: "{{ dovecot_playbook_quota_warning_subject | default('Quota warning (mailbox ${PERCENT}% full)') }}"
+        # TLS policy.
+        dovecot_playbook_ssl_min_protocol: "{{ dovecot_playbook_ssl_min_protocol | default('TLSv1.2') }}"
+        dovecot_playbook_ssl_prefer_ciphers: "{{ dovecot_playbook_ssl_prefer_ciphers | default('client') }}"
+        # Listener ports (standard defaults; rarely changed).
+        dovecot_playbook_imap_port: "{{ dovecot_playbook_imap_port | default(143) }}"
+        dovecot_playbook_imaps_port: "{{ dovecot_playbook_imaps_port | default(993) }}"
+        dovecot_playbook_managesieve_port: "{{ dovecot_playbook_managesieve_port | default(4190) }}"
+        # Postfix-facing sockets: spool dir + owner (used to build the service
+        # blocks in the next task, since the path lives in a non-templatable key).
+        dovecot_playbook_postfix_private_dir: "{{ dovecot_playbook_postfix_private_dir | default('/var/spool/postfix/private') }}"
+        dovecot_playbook_postfix_user: "{{ dovecot_playbook_postfix_user | default('postfix') }}"
+        dovecot_playbook_postfix_group: "{{ dovecot_playbook_postfix_group | default('postfix') }}"
         # LDAP search filters. The defaults reproduce the shipped login/lookup
         # policy; override them to match your directory schema. The passdb (login)
         # filter is deliberately STRICTER than the userdb (lookup) filter: only the
@@ -110,6 +138,26 @@
                '(&(objectClass=user)(objectCategory=person)'
                ~ '(|(sAMAccountName=%{user})(mail=%{user})(proxyAddresses=smtp:%{user})(proxyAddresses=SMTP:%{user}))'
                ~ '(!(userAccountControl:1.2.840.113556.1.4.803:=2)))', true) }}
+
+    # The Postfix-facing sockets (LMTP delivery, SASL auth, quota policy) live in
+    # Postfix's private spool dir. The unix_listener PATH is part of the block KEY,
+    # and Ansible does not template dict keys - so these three service blocks are
+    # constructed here (computed keys) from the dir/owner knobs above, then
+    # referenced as-is in run_dovecot_settings below. Keep the socket BASENAMES
+    # (dovecot-lmtp/auth/quota-status); Postfix addresses them queue-relative as
+    # "private/<basename>".
+    - name: "Build the Postfix-facing service blocks (computed unix_listener paths)"
+      ansible.builtin.set_fact:
+        dovecot_playbook_service_lmtp: >-
+          {{ {'unix_listener ' ~ dovecot_playbook_postfix_private_dir ~ '/dovecot-lmtp':
+              {'mode': '0660', 'user': dovecot_playbook_postfix_user, 'group': dovecot_playbook_postfix_group}} }}
+        dovecot_playbook_service_auth: >-
+          {{ {'unix_listener ' ~ dovecot_playbook_postfix_private_dir ~ '/auth':
+              {'mode': '0660', 'user': dovecot_playbook_postfix_user, 'group': dovecot_playbook_postfix_group}} }}
+        dovecot_playbook_service_quota_status: >-
+          {{ {'executable': 'quota-status -p postfix', 'client_limit': 1,
+              'unix_listener ' ~ dovecot_playbook_postfix_private_dir ~ '/quota-status':
+              {'mode': '0660', 'user': dovecot_playbook_postfix_user, 'group': dovecot_playbook_postfix_group}} }}
 
     # The role provisions the mail storage root and the vmail account, but a few
     # application-level subdirectories the config below references are this playbook's
@@ -289,11 +337,11 @@
           # Compatibility note: 2.4 syntax, were ssl_cert/ssl_key with leading "<".
           ssl_server_cert_file: "{{ dovecot_playbook_tls_cert_file }}"
           ssl_server_key_file: "{{ dovecot_playbook_tls_key_file }}"
-          ssl_min_protocol: "TLSv1.2"
+          ssl_min_protocol: "{{ dovecot_playbook_ssl_min_protocol }}"
 
           # "client" lets the client choose cipher order; modern clients pick well.
           # Compatibility note: 2.4 syntax, was "ssl_prefer_server_ciphers = no"
-          ssl_server_prefer_ciphers: "client"
+          ssl_server_prefer_ciphers: "{{ dovecot_playbook_ssl_prefer_ciphers }}"
 
 
           ##### Mail location (location of users' mailboxes)
@@ -645,35 +693,27 @@
             # has already crossed the wire. If every client supports implicit TLS,
             # hardening option: drop this "inet_listener imap" and offer 993 only.
             "inet_listener imap":
-              port: 143
+              port: "{{ dovecot_playbook_imap_port }}"
             "inet_listener imaps":
-              port: 993 # implicit TLS
+              port: "{{ dovecot_playbook_imaps_port }}" # implicit TLS
               ssl: true
 
-          # LMTP: how Postfix delivers mail to Dovecot. Postfix main.cf:
-          #   transport: "example.com lmtp:unix:/var/spool/postfix/private/dovecot-lmtp"
-          "service lmtp":
-            'unix_listener /var/spool/postfix/private/dovecot-lmtp':
-              mode: "0660"
-              group: "postfix"
-              user: "postfix"
-
-          # SASL auth socket for Postfix submission. Postfix main.cf:
+          # LMTP (Postfix delivery) and SASL auth sockets for Postfix. Built in
+          # pre_tasks from dovecot_playbook_postfix_* (the unix_listener path is a
+          # non-templatable dict key), referenced here as-is. Postfix main.cf:
+          #   transport = "example.com lmtp:unix:private/dovecot-lmtp"
           #   smtpd_sasl_type = dovecot ; smtpd_sasl_path = private/auth
-          "service auth":
-            'unix_listener /var/spool/postfix/private/auth':
-              mode: "0660"
-              group: "postfix"
-              user: "postfix"
+          "service lmtp": "{{ dovecot_playbook_service_lmtp }}"
+          "service auth": "{{ dovecot_playbook_service_auth }}"
           "service managesieve-login":
             "inet_listener sieve":
-              port: 4190
+              port: "{{ dovecot_playbook_managesieve_port }}"
 
           # Quota warning: invoked by the quota "warning" rules below to mail the user
           # when they cross a threshold. Script is rendered by the role
           # (run_dovecot_external_files.quota_warning_script).
           "service quota-warning":
-            executable: "script /usr/local/bin/dovecot-quota-warning.sh"
+            executable: "script {{ dovecot_playbook_quota_warning_script_path }}"
             user: "dovecot"
             "unix_listener quota-warning":
               mode: "0660"
@@ -693,13 +733,8 @@
           #   "inet_listener status":
           #     port: 12340
           #     listen: "127.0.0.1" # or the specific internal IP Postfix connects to
-          "service quota-status":
-            executable: "quota-status -p postfix"
-            client_limit: 1
-            'unix_listener /var/spool/postfix/private/quota-status':
-              mode: "0660"
-              group: "postfix"
-              user: "postfix"
+          # Built in pre_tasks (computed unix_listener path), referenced as-is.
+          "service quota-status": "{{ dovecot_playbook_service_quota_status }}"
 
 
           ##### Per-protocol plugins
@@ -752,9 +787,9 @@
           'quota "User quota"':
             quota_driver: "count"
             quota_storage_size: "{{ dovecot_playbook_quota_storage_size }}"
-            quota_storage_grace: "150M"
-            quota_mail_size: "100M"
-            quota_exceeded_message: "Mailbox is over quota / Postfach ist voll"
+            quota_storage_grace: "{{ dovecot_playbook_quota_storage_grace }}"
+            quota_mail_size: "{{ dovecot_playbook_quota_mail_size }}"
+            quota_exceeded_message: "{{ dovecot_playbook_quota_exceeded_message }}"
             # Warn the user at increasing fill levels. The percentages come from
             # dovecot_playbook_quota_warn_percentages (highest first); the block
             # labels warn-1..warn-4 are just unique names (Dovecot needs a name,
@@ -781,7 +816,7 @@
           # further processing; never use OK/PERMIT here.
           quota_status_success: "DUNNO"
           quota_status_nouser: "DUNNO"
-          quota_status_overquota: "552 5.2.2 Mailbox is over quota"
+          quota_status_overquota: "{{ dovecot_playbook_quota_status_overquota }}"
 
 
           ##### LDAP / Active Directory connection (shared by the ldap pass/userdb)
@@ -952,17 +987,19 @@
         run_dovecot_external_files:
 
           # Master-users passwd-file consumed by the "masterusers" passdb above.
-          # Generate hashes with: doveadm pw -s BLF-CRYPT
+          # The password hash is a required, no-default secret (asserted in
+          # pre_tasks) - keep it in Ansible Vault. Generate one with:
+          #   doveadm pw -s BLF-CRYPT
           master_users:
             enabled: true
             path: "/etc/dovecot/dovecot-masterusers-passwd"
             entries:
               - username: "admin"
-                password_hash: "{BLF-CRYPT}$2y$05$CHANGE-ME-USE-doveadm-pw" # ADAPT (Vault)
+                password_hash: "{{ dovecot_playbook_master_admin_password_hash }}"
 
           # Quota-warning script invoked by the "service quota-warning" above
           quota_warning_script:
             enabled: true
-            path: "/usr/local/bin/dovecot-quota-warning.sh"
-            from: "IT <it@{{ dovecot_playbook_mail_domain }}>"
-            subject: "Quota warning (mailbox ${PERCENT}% full)"
+            path: "{{ dovecot_playbook_quota_warning_script_path }}"
+            from: "{{ dovecot_playbook_quota_warning_from }}"
+            subject: "{{ dovecot_playbook_quota_warning_subject }}"

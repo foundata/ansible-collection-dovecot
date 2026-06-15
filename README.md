@@ -37,14 +37,14 @@ The primary resource in this collection to configure and maintain Dovecot. See t
 
 ### Playbook: `mailserver_ldap_maildir.yml`
 
-[`mailserver_ldap_maildir.yml`](./playbooks/mailserver_ldap_maildir.yml) is a complete Dovecot 2.4 mailserver - IMAP/LMTP/ManageSieve, Active Directory (LDAP) authentication, Maildir storage, per-user quota with warning mails, Sieve filtering and shared and public IMAP namespaces.
+[`mailserver_ldap_maildir.yml`](./playbooks/mailserver_ldap_maildir.yml) is a complete Dovecot mailserver setup - IMAP/LMTP/ManageSieve, Active Directory (LDAP) authentication, Maildir storage, per-user quota with warning mails, Sieve filtering and shared and public IMAP namespaces.
 
-The deployment-specific values (mail domain, TLS certificate paths, LDAP/AD coordinates, mail storage, quota) are exposed as `dovecot_playbook_*` variables you override per environment (with the LDAP bind password kept in Ansible Vault).
+The deployment-specific values (mail domain, TLS certificate paths, LDAP/AD coordinates, mail storage, quota) are exposed as `dovecot_playbook_*` variables you override per environment.
 
-Once the collection is installed (`ansible-galaxy collection install foundata.dovecot`), you can run the shipped playbook directly by its fully qualified name. Point it at your own inventory, supply the `dovecot_playbook_*` variables (e.g. via `group_vars` / `host_vars` / `--extra-vars`) and provide the Vault password for the LDAP bind secret:
+Once the collection is installed (`ansible-galaxy collection install foundata.dovecot`), you can run the shipped playbook directly by its fully qualified name. Point it at your own inventory, supply the `dovecot_playbook_*` variables (e.g. via `group_vars` / `host_vars` / `--extra-vars`):
 
 ```sh
-ansible-playbook foundata.dovecot.mailserver_ldap_maildir --inventory ./inventory --ask-vault-pass
+ansible-playbook foundata.dovecot.mailserver_ldap_maildir --inventory ./inventory
 ```
 
 Alternatively, copy it into your own playbook repository and edit it to your needs.

@@ -32,32 +32,83 @@
 ---
 
 - name: "Configure Dovecot (IMAP/LMTP/ManageSieve, LDAP/AD auth)"
-  hosts: "{{ target | default('mailservers') }}"
+  hosts: "{{ dovecot_playbook_hosts | default('mailservers') }}"
   become: true
   pre_tasks:
 
-    # The role provisions the mail storage root (/srv/vmail) and the vmail account,
-    # but a few application-level subdirectories the config below references are
-    # this playbook's responsibility (mail storage provisioning is out of scope for
-    # the role - see the header):
-    #   /srv/vmail/db              the shared-mailbox ACL dict (acl_sharing_map)
-    #   /srv/vmail/public/mail/...  backing storage for the public namespace
+    # Deployment-specific variables
+    #
+    # Everything an operator typically changes per environment is exposed as a
+    # variable, split into two groups:
+    #
+    #   1. Variables WITH a sensible default (resolved just below). Override them
+    #      via inventory / group_vars / host_vars / -e when the default does not
+    #      fit. (A plain play-level vars: block could not be overridden that way,
+    #      hence the set_fact-with-default pattern.)
+    #
+    #   2. Variables WITHOUT a default (required, asserted further below). These
+    #      are per-deployment identity and secret values - your mail domain, TLS
+    #      certificate paths, LDAP/AD coordinates and the bind password - for
+    #      which a shipped default could not work anywhere, so it would only be a
+    #      misleading footgun. You MUST set them yourself.
+    - name: "Resolve deployment parameters that have a sensible default (override via inventory/group_vars/-e)"
+      ansible.builtin.set_fact:
+        # Mail storage root + the shared "vmail" owner's numeric UID/GID.
+        dovecot_playbook_mail_storage_path: "{{ dovecot_playbook_mail_storage_path | default('/srv/vmail') }}"
+        dovecot_playbook_vmail_uid: "{{ dovecot_playbook_vmail_uid | default(10000) }}"
+        dovecot_playbook_vmail_gid: "{{ dovecot_playbook_vmail_gid | default(10000) }}"
+        # Per-user quota: total size + the fill-level percentages that trigger a
+        # warning mail (exactly four distinct entries, highest first).
+        dovecot_playbook_quota_storage_size: "{{ dovecot_playbook_quota_storage_size | default('25G') }}"
+        dovecot_playbook_quota_warn_percentages: "{{ dovecot_playbook_quota_warn_percentages | default([99, 95, 90, 80]) }}"
+
+    # Required, no default (see group 2 above). The bind password is a secret:
+    # keep it in Ansible Vault (an encrypted vault_* variable assigned to
+    # dovecot_playbook_ldap_bind_password) and run with --ask-vault-pass or a
+    # configured vault id.
+    - name: "Require deployment parameters that have no sensible default (set them; use Vault for the secret)"
+      ansible.builtin.assert:
+        that:
+          - "(lookup('ansible.builtin.vars', item, default='') | string | length) > 0"
+        quiet: true
+        fail_msg: >-
+          Required variable '{{ item }}' is not set. This playbook ships no default
+          for per-deployment identity/secret values (mail domain, TLS certificate
+          paths, LDAP/AD coordinates, LDAP bind password) because none could work
+          everywhere. Set it via inventory / group_vars / host_vars / -e (keep the
+          bind password in Ansible Vault).
+        success_msg: "All required deployment parameters are set."
+      loop:
+        - "dovecot_playbook_mail_domain"
+        - "dovecot_playbook_tls_cert_file"
+        - "dovecot_playbook_tls_key_file"
+        - "dovecot_playbook_ldap_uri"
+        - "dovecot_playbook_ldap_base"
+        - "dovecot_playbook_ldap_bind_dn"
+        - "dovecot_playbook_ldap_group_dn"
+        - "dovecot_playbook_ldap_bind_password"
+
+    # The role provisions the mail storage root and the vmail account, but a few
+    # application-level subdirectories the config below references are this playbook's
+    # responsibility (mail storage provisioning is out of scope for the role - see the
+    # header):
+    #   <storage>/db               the shared-mailbox ACL dict (acl_sharing_map)
+    #   <storage>/public/mail/...  backing storage for the public namespace
     # Create them before the role starts Dovecot. Ownership uses the NUMERIC vmail
     # UID/GID on purpose: the vmail account is created by the role, which runs after
-    # these pre_tasks, so the name may not resolve yet. Keep these IDs in sync with
-    # run_dovecot_mail_user_uid / run_dovecot_mail_group_gid below.
+    # these pre_tasks, so the name may not resolve yet.
     - name: "Provision mail subdirectories the Dovecot config references"
       ansible.builtin.file:
         path: "{{ item }}"
         state: "directory"
-        owner: 10000
-        group: 10000
+        owner: "{{ dovecot_playbook_vmail_uid }}"
+        group: "{{ dovecot_playbook_vmail_gid }}"
         mode: "u=rwx,g=rx,o=" # 0750
       loop:
-        - "/srv/vmail/db"
-        - "/srv/vmail/public"
-        - "/srv/vmail/public/mail"
-        - "/srv/vmail/public/mail/data"
+        - "{{ dovecot_playbook_mail_storage_path }}/db"
+        - "{{ dovecot_playbook_mail_storage_path }}/public"
+        - "{{ dovecot_playbook_mail_storage_path }}/public/mail"
+        - "{{ dovecot_playbook_mail_storage_path }}/public/mail/data"
 
   tasks:
 
@@ -74,10 +125,10 @@
         # called "vmail".
         run_dovecot_mail_user_manage: true
         run_dovecot_mail_user_name: "vmail"
-        run_dovecot_mail_user_uid: 10000
+        run_dovecot_mail_user_uid: "{{ dovecot_playbook_vmail_uid }}"
         run_dovecot_mail_group_name: "vmail"
-        run_dovecot_mail_group_gid: 10000
-        run_dovecot_mail_storage_path: "/srv/vmail"
+        run_dovecot_mail_group_gid: "{{ dovecot_playbook_vmail_gid }}"
+        run_dovecot_mail_storage_path: "{{ dovecot_playbook_mail_storage_path }}"
 
         run_dovecot_settings:
           # Dovecot >= 2.4 requires configuration version anchors. So a package upgrade
@@ -213,8 +264,8 @@
           # PEM encoded X.509 SSL/TLS certificate and private key. ADAPT to your
           # certificate paths (e.g. provisioned by foundata.acmesh).
           # Compatibility note: 2.4 syntax, were ssl_cert/ssl_key with leading "<".
-          ssl_server_cert_file: "/etc/ssl/certs/imap.example.com/fullchain.pem"
-          ssl_server_key_file: "/etc/ssl/private/imap.example.com/cert.key"
+          ssl_server_cert_file: "{{ dovecot_playbook_tls_cert_file }}"
+          ssl_server_key_file: "{{ dovecot_playbook_tls_key_file }}"
           ssl_min_protocol: "TLSv1.2"
 
           # "client" lets the client choose cipher order; modern clients pick well.
@@ -344,7 +395,7 @@
           # - If UID and GID need to be set, it is usually cleaner to return fixed values
           #   from the LDAP, AD, or SQL userdb lookup.
           mail_driver: "maildir"
-          mail_home: "/srv/vmail/home/%{user}"
+          mail_home: "{{ dovecot_playbook_mail_storage_path }}/home/%{user}"
           mail_path: "~/mail/data"
           mail_index_path: "~/mail/index"
           mail_control_path: "~/mail/control"
@@ -536,7 +587,7 @@
             # No per-user ACL bookkeeping for the public namespace.
             acl_ignore: true
             mail_driver: "maildir"
-            mail_path: "/srv/vmail/public/mail/data"
+            mail_path: "{{ dovecot_playbook_mail_storage_path }}/public/mail/data"
             mail_index_private_path: "~/public/index"
             mail_control_path: "~/public/control"
             mail_volatile_path: "~/public/volatile"
@@ -557,7 +608,7 @@
           # unprivileged imap process; lives on the mail partition here).
           acl_sharing_map:
             "dict file":
-              path: "/srv/vmail/db/shared-mailboxes.db"
+              path: "{{ dovecot_playbook_mail_storage_path }}/db/shared-mailboxes.db"
 
 
           ##### Services
@@ -677,27 +728,31 @@
           # One quota root, storage-only.
           'quota "User quota"':
             quota_driver: "count"
-            quota_storage_size: "25G"
+            quota_storage_size: "{{ dovecot_playbook_quota_storage_size }}"
             quota_storage_grace: "150M"
             quota_mail_size: "100M"
             quota_exceeded_message: "Mailbox is over quota / Postfach ist voll"
-            # Warn the user at increasing fill levels (highest first).
-            "warning warn-99":
-              quota_storage_percentage: 99
+            # Warn the user at increasing fill levels. The percentages come from
+            # dovecot_playbook_quota_warn_percentages (highest first); the block
+            # labels warn-1..warn-4 are just unique names (Dovecot needs a name,
+            # and it does not have to equal the percentage). Keep exactly four
+            # distinct entries in the list.
+            "warning warn-1":
+              quota_storage_percentage: "{{ dovecot_playbook_quota_warn_percentages[0] }}"
               "execute quota-warning":
-                args: "99 %{user}"
-            "warning warn-95":
-              quota_storage_percentage: 95
+                args: "{{ dovecot_playbook_quota_warn_percentages[0] }} %{user}"
+            "warning warn-2":
+              quota_storage_percentage: "{{ dovecot_playbook_quota_warn_percentages[1] }}"
               "execute quota-warning":
-                args: "95 %{user}"
-            "warning warn-90":
-              quota_storage_percentage: 90
+                args: "{{ dovecot_playbook_quota_warn_percentages[1] }} %{user}"
+            "warning warn-3":
+              quota_storage_percentage: "{{ dovecot_playbook_quota_warn_percentages[2] }}"
               "execute quota-warning":
-                args: "90 %{user}"
-            "warning warn-80":
-              quota_storage_percentage: 80
+                args: "{{ dovecot_playbook_quota_warn_percentages[2] }} %{user}"
+            "warning warn-4":
+              quota_storage_percentage: "{{ dovecot_playbook_quota_warn_percentages[3] }}"
               "execute quota-warning":
-                args: "80 %{user}"
+                args: "{{ dovecot_playbook_quota_warn_percentages[3] }} %{user}"
 
           # Answers the quota-status policy service gives Postfix. DUNNO allows Postfix
           # further processing; never use OK/PERMIT here.
@@ -708,14 +763,17 @@
 
           ##### LDAP / Active Directory connection (shared by the ldap pass/userdb)
 
-          # ADAPT all of these to your directory.
-          ldap_uris: "ldaps://dc1.ad.example.com:636"
+          # All of these are required deployment parameters (no default; asserted
+          # in pre_tasks). Set them via inventory/group_vars/-e.
+          ldap_uris: "{{ dovecot_playbook_ldap_uri }}"
           ldap_starttls: false # using ldaps:// here, so no STARTTLS
-          ldap_base: "OU=common,DC=ad,DC=example,DC=com"
+          ldap_base: "{{ dovecot_playbook_ldap_base }}"
           ldap_scope: "subtree"
-          ldap_auth_dn: "CN=svc-mail,OU=service,DC=ad,DC=example,DC=com"
-          # SECURITY: keep this in Ansible Vault.
-          ldap_auth_dn_password: "{{ vault_dovecot_ldap_bind_password | default('CHANGE-ME-USE-VAULT') }}"
+          ldap_auth_dn: "{{ dovecot_playbook_ldap_bind_dn }}"
+          # SECURITY: required, no default; supply via Ansible Vault (asserted in
+          # pre_tasks). This bind secret lives inline in the rendered 0600
+          # dovecot.conf.
+          ldap_auth_dn_password: "{{ dovecot_playbook_ldap_bind_password }}"
 
 
           ##### mbox-specific settings (just for safety, please use other storage formats!)
@@ -824,11 +882,18 @@
           - name: "ldap"
             driver: "ldap"
             passdb_ldap_bind: true
+            # Assembled via Jinja concatenation only to inject the group DN knob
+            # while keeping each YAML line short; the folded result is still ONE
+            # space-free LDAP filter (newlines fold to spaces BETWEEN Jinja tokens,
+            # which Jinja ignores - the produced string has no spaces).
             passdb_ldap_filter: >-
-              (&(objectClass=user)(objectCategory=person)(mail=%{user})(!(userAccountControl:1.2.840.113556.1.4.803:=2))(memberOf:1.2.840.113556.1.4.1941:=CN=SERVICE_email_ALLOW,OU=group,DC=ad,DC=example,DC=com))
+              {{ '(&(objectClass=user)(objectCategory=person)(mail=%{user})'
+                 ~ '(!(userAccountControl:1.2.840.113556.1.4.803:=2))'
+                 ~ '(memberOf:1.2.840.113556.1.4.1941:='
+                 ~ dovecot_playbook_ldap_group_dn ~ '))' }}
             fields:
               user: "%{ldap:mail | lower}"
-              userdb_home: "/srv/vmail/home/%{ldap:mail | lower}"
+              userdb_home: "{{ dovecot_playbook_mail_storage_path }}/home/%{ldap:mail | lower}"
               userdb_uid: "vmail"
               userdb_gid: "vmail"
           # ...then local shadow as a fallback for system accounts.
@@ -858,7 +923,7 @@
             # Compatibility note: 2.4.0 syntax, replaces the old "user_attrs = =home=..,=uid=vmail,=gid=vmail".
             fields:
               user: "%{ldap:mail | lower}"
-              home: "/srv/vmail/home/%{ldap:mail | lower}"
+              home: "{{ dovecot_playbook_mail_storage_path }}/home/%{ldap:mail | lower}"
               uid: "vmail"
               gid: "vmail"
           - driver: "passwd"
@@ -881,5 +946,5 @@
           quota_warning_script:
             enabled: true
             path: "/usr/local/bin/dovecot-quota-warning.sh"
-            from: "IT <it@example.com>"
+            from: "IT <it@{{ dovecot_playbook_mail_domain }}>"
             subject: "Quota warning (mailbox ${PERCENT}% full)"

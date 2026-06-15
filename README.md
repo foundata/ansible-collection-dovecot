@@ -2,6 +2,20 @@
 
 This repository contains the `foundata.dovecot` Ansible Collection.
 
+It provides resources to manage and use [Dovecot](https://dovecot.org/), a secure and high-performance open-source IMAP and POP3 server (mail server).
+
+
+<div align="center" id="project-readme-header">
+<br>
+<br>
+
+**⭐ Found this useful? Support open-source and star this project:**
+
+[![GitHub repository](https://img.shields.io/github/stars/foundata/ansible-collection-dovecot.svg)](https://github.com/foundata/ansible-collection-dovecot)
+
+<br>
+</div>
+
 
 
 ## Table of contents<a id="toc"></a>
@@ -17,7 +31,7 @@ This repository contains the `foundata.dovecot` Ansible Collection.
 
 ### Role: `foundata.dovecot.run`
 
-See the [role's `README.md`](./roles/run/README.md) for more information and usage examples.
+The primary resource in this collection to configure and maintain Dovecot. See the [role's `README.md`](./roles/run/README.md) for more information and usage examples.
 
 
 

@@ -32,7 +32,7 @@ run_dovecot_autoupgrade: false
 
 # Whether to install Dovecot from the official upstream package repository at
 # https://repo.dovecot.org/ instead of the distribution's own packages. This
-# role only supports Dovevot 2.4.x or newer.
+# role only supports Dovecot 2.4.x or newer.
 #
 # `false` (the default) keeps the distribution repository as the package source:
 # the role installs whatever Dovecot version your distribution ships.
@@ -74,7 +74,7 @@ run_dovecot_repository_manage: false
 #   `run_dovecot_repository_manage` to `false` and simply use your
 #   distribution's default packages
 #
-# This role only supports Dovevot 2.4.x or newer, so using a `ce-2.3[...]`
+# This role only supports Dovecot 2.4.x or newer, so using a `ce-2.3[...]`
 # channel won't work.
 #
 # - Type: str

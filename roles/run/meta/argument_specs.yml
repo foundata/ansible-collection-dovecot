@@ -216,8 +216,6 @@ argument_specs:
       #     artifacts Dovecot reads or runs that are NOT dovecot.conf itself.
       #     They have their own parsers/semantics.
       #
-      # FIXME check if the following comment is still true after we finished
-      #       the implementation:
       # `mail_plugins` content (top-level and inside per-protocol blocks) is
       # parsed by the role at task time and looked up in an internal plugin
       # map to determine which distribution sub-packages to install. Unknown

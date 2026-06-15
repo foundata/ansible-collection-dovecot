@@ -30,7 +30,10 @@
       register: __run_dovecot_repository_source_result
 
 
-    - name: "Setup | Install | Debian | Refresh apt cache after a repository change"
+    # noqa no-handler: this must refresh the cache BEFORE the package install in
+    # setup/install/default.yml (same role run); a handler would only fire at the
+    # end of the play, too late, so the change-gated inline task is intentional.
+    - name: "Setup | Install | Debian | Refresh apt cache after a repository change" # noqa: no-handler
       ansible.builtin.apt:
         update_cache: true
       when:

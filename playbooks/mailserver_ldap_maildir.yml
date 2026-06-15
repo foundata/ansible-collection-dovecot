@@ -1,14 +1,14 @@
 # Curated, opinionated example of a production-style Dovecot mailserver with:
 #
 # - IMAP, LMTP, ManageSieve protocol support
-# - Active Directory (LDAP) authentication
+# - LDAP / Active Directory authentication
 # - Maildir storage
 # - Per-user quota
 # - Sieve filtering
 # - Shared and public IMAP namespaces
 # - Postfix integration
 #
-# Ther is inline reasoning as comments why these values where chosen. This
+# There is inline reasoning as comments why these values where chosen. This
 # playbook is meant as a starting point: copy it into your own playbook
 # repository and adapt the values as needed (mainly: host group, domains, LDAP,
 # paths) and/or put them into Ansible inventory / group variables.
@@ -51,21 +51,12 @@
     #      certificate paths, LDAP/AD coordinates and the bind password - for
     #      which a shipped default could not work anywhere, so it would only be a
     #      misleading footgun. You MUST set them yourself.
-    - name: "Resolve deployment parameters that have a sensible default (override via inventory/group_vars/-e)"
-      ansible.builtin.set_fact:
-        # Mail storage root + the shared "vmail" owner's numeric UID/GID.
-        dovecot_playbook_mail_storage_path: "{{ dovecot_playbook_mail_storage_path | default('/srv/vmail') }}"
-        dovecot_playbook_vmail_uid: "{{ dovecot_playbook_vmail_uid | default(10000) }}"
-        dovecot_playbook_vmail_gid: "{{ dovecot_playbook_vmail_gid | default(10000) }}"
-        # Per-user quota: total size + the fill-level percentages that trigger a
-        # warning mail (exactly four distinct entries, highest first).
-        dovecot_playbook_quota_storage_size: "{{ dovecot_playbook_quota_storage_size | default('25G') }}"
-        dovecot_playbook_quota_warn_percentages: "{{ dovecot_playbook_quota_warn_percentages | default([99, 95, 90, 80]) }}"
-
-    # Required, no default (see group 2 above). The bind password is a secret:
+    #
+    # Required, no default (see group 2 above). The LDAP bind password is a secret:
     # keep it in Ansible Vault (an encrypted vault_* variable assigned to
     # dovecot_playbook_ldap_bind_password) and run with --ask-vault-pass or a
-    # configured vault id.
+    # configured vault id. Checked BEFORE the set_fact below, because the default
+    # passdb filter is built from dovecot_playbook_ldap_group_dn.
     - name: "Require deployment parameters that have no sensible default (set them; use Vault for the secret)"
       ansible.builtin.assert:
         that:
@@ -87,6 +78,38 @@
         - "dovecot_playbook_ldap_bind_dn"
         - "dovecot_playbook_ldap_group_dn"
         - "dovecot_playbook_ldap_bind_password"
+
+    - name: "Resolve deployment parameters that have a sensible default (override via inventory/group_vars/-e)"
+      ansible.builtin.set_fact:
+        # Mail storage root + the shared "vmail" owner's numeric UID/GID.
+        dovecot_playbook_mail_storage_path: "{{ dovecot_playbook_mail_storage_path | default('/srv/vmail') }}"
+        dovecot_playbook_vmail_uid: "{{ dovecot_playbook_vmail_uid | default(10000) }}"
+        dovecot_playbook_vmail_gid: "{{ dovecot_playbook_vmail_gid | default(10000) }}"
+        # Per-user quota: total size + the fill-level percentages that trigger a
+        # warning mail (exactly four distinct entries, highest first).
+        dovecot_playbook_quota_storage_size: "{{ dovecot_playbook_quota_storage_size | default('25G') }}"
+        dovecot_playbook_quota_warn_percentages: "{{ dovecot_playbook_quota_warn_percentages | default([99, 95, 90, 80]) }}"
+        # LDAP search filters. The defaults reproduce the shipped login/lookup
+        # policy; override them to match your directory schema. The passdb (login)
+        # filter is deliberately STRICTER than the userdb (lookup) filter: only the
+        # primary mail of an enabled, group-member account may LOG IN, while
+        # delivery and administrative lookups also resolve aliases (proxyAddresses)
+        # and the sAMAccountName - so aliases receive mail but are NOT alternative
+        # usernames.
+        #
+        # Built via Jinja concatenation only to keep each YAML line short and to
+        # inject the group DN; each folded result is one space-free LDAP filter (as a
+        # filter with whitespace is invalid).
+        dovecot_playbook_ldap_passdb_filter: >-
+          {{ dovecot_playbook_ldap_passdb_filter | default(
+               '(&(objectClass=user)(objectCategory=person)(mail=%{user})'
+               ~ '(!(userAccountControl:1.2.840.113556.1.4.803:=2))'
+               ~ '(memberOf:1.2.840.113556.1.4.1941:=' ~ dovecot_playbook_ldap_group_dn ~ '))', true) }}
+        dovecot_playbook_ldap_userdb_filter: >-
+          {{ dovecot_playbook_ldap_userdb_filter | default(
+               '(&(objectClass=user)(objectCategory=person)'
+               ~ '(|(sAMAccountName=%{user})(mail=%{user})(proxyAddresses=smtp:%{user})(proxyAddresses=SMTP:%{user}))'
+               ~ '(!(userAccountControl:1.2.840.113556.1.4.803:=2)))', true) }}
 
     # The role provisions the mail storage root and the vmail account, but a few
     # application-level subdirectories the config below references are this playbook's
@@ -877,20 +900,14 @@
           # The "user" field canonicalizes the login to the AD mail value
           # (lowercased), so "User@Example.com" / alias / master logins all map
           # to one identity and home.
-          # Login filter: only a real mailbox address of an enabled, group-member
-          # account may log in (stricter than the userdb filter below).
+          # Login filter: dovecot_playbook_ldap_passdb_filter (resolved in
+          # pre_tasks; override to match your schema). Default: only a real mailbox
+          # address of an enabled, group-member account may log in (stricter than
+          # the userdb filter below).
           - name: "ldap"
             driver: "ldap"
             passdb_ldap_bind: true
-            # Assembled via Jinja concatenation only to inject the group DN knob
-            # while keeping each YAML line short; the folded result is still ONE
-            # space-free LDAP filter (newlines fold to spaces BETWEEN Jinja tokens,
-            # which Jinja ignores - the produced string has no spaces).
-            passdb_ldap_filter: >-
-              {{ '(&(objectClass=user)(objectCategory=person)(mail=%{user})'
-                 ~ '(!(userAccountControl:1.2.840.113556.1.4.803:=2))'
-                 ~ '(memberOf:1.2.840.113556.1.4.1941:='
-                 ~ dovecot_playbook_ldap_group_dn ~ '))' }}
+            passdb_ldap_filter: "{{ dovecot_playbook_ldap_passdb_filter }}"
             fields:
               user: "%{ldap:mail | lower}"
               userdb_home: "{{ dovecot_playbook_mail_storage_path }}/home/%{ldap:mail | lower}"
@@ -912,11 +929,12 @@
           # connections (recommended when combining auth binds with an LDAP userdb).
           - driver: "ldap"
             ldap_connection_group: "userdb"
-            # Broader than the login filter: also resolves the canonical name and
-            # alias/old addresses (sAMAccountName, proxyAddresses, both cases) for
-            # delivery and administrative lookups.
-            userdb_ldap_filter: >-
-              (&(objectClass=user)(objectCategory=person)(|(sAMAccountName=%{user})(mail=%{user})(proxyAddresses=smtp:%{user})(proxyAddresses=SMTP:%{user}))(!(userAccountControl:1.2.840.113556.1.4.803:=2)))
+            # dovecot_playbook_ldap_userdb_filter (resolved in pre_tasks; override
+            # to match your schema). Default is broader than the login filter: it
+            # also resolves the canonical name and alias/old addresses
+            # (sAMAccountName, proxyAddresses, both cases) for delivery and
+            # administrative lookups.
+            userdb_ldap_filter: "{{ dovecot_playbook_ldap_userdb_filter }}"
             # Static identity for every user (one shared vmail uid/gid); home is
             # derived from the AD mail attribute (lowercased); "user" canonicalizes
             # the resolved login the same way as the passdb above.

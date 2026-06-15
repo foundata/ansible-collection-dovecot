@@ -21,7 +21,6 @@
 # - Choices: present, absent
 run_dovecot_state: "present"
 
-
 # If set to `true`, all managed packages will be upgraded during each Ansible
 # run (e.g., when the package provider detects a newer version than the
 # currently installed one).
@@ -31,6 +30,48 @@ run_dovecot_state: "present"
 # - Default: false
 run_dovecot_autoupgrade: false
 
+# Whether to install Dovecot from the official upstream package repository at
+# https://repo.dovecot.org/ instead of the distribution's own packages.
+#
+# `false` (the default) keeps the distribution as the package source: the role
+# installs whatever Dovecot 2.4 version your distribution ships.
+#
+# `true` configures the signed Dovecot Community Edition (CE) 2.4 repository
+# from repo.dovecot.org and installs/upgrades Dovecot from it. This is useful to
+# pick up newer 2.4.x maintenance releases (security and bug fixes) than a
+# frozen distribution release provides.
+#
+# Coverage caveat: repo.dovecot.org only builds packages for a subset of
+# platforms. Among this role's supported platforms it currently covers **Debian
+# 13 only** (Ubuntu 26.04 and Fedora have no upstream CE 2.4 packages). Enabling
+# this on a platform without upstream coverage makes the role fail early with an
+# explanatory message — those distributions already ship Dovecot 2.4 in their
+# default repositories, so leave this `false` there.
+#
+# See `run_dovecot_repository_channel` to choose or pin the channel.
+#
+# - Type: bool
+# - Required: No
+# - Default: false
+run_dovecot_repository_manage: false
+
+# Which repo.dovecot.org channel to use when `run_dovecot_repository_manage` is
+# `true`. Has no effect otherwise.
+#
+# `ce-2.4-latest` (the default) follows the latest 2.4.x maintenance release and
+# is recommended so security and bug fixes arrive automatically.
+#
+# Pin to a specific release (e.g. `ce-2.4.4`) for reproducible,
+# change-controlled deployments where package versions must not move on their
+# own.
+#
+# Only Dovecot 2.4 Community Edition channels are valid: this role is Dovecot
+# 2.4 only and does not support 2.3 or the Pro edition channels.
+#
+# - Type: str
+# - Required: No
+# - Default: ce-2.4-latest
+run_dovecot_repository_channel: "ce-2.4-latest"
 
 # Defines the status of the service(s).
 #

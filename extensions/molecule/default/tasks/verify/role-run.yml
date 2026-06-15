@@ -776,3 +776,43 @@
     success_msg: >-
       Master-user IMAP LOGIN as '{{ __testing_dovecot_imap_user }}*admin' succeeded with the
       master password and was correctly rejected with the login user's own password.
+
+
+# Upstream repository (repo.dovecot.org)
+- name: "Molecule | Verify | Upstream repository (Debian only)"
+  when:
+    - ansible_facts['distribution'] == 'Debian' # Converge enablesrun_dovecot_repository_manage only on Debian
+  block:
+
+    - name: "Molecule | Verify | Read the deb822 apt source for repo.dovecot.org"
+      ansible.builtin.slurp:
+        src: "/etc/apt/sources.list.d/dovecot-ce.sources"
+      register: __testing_repo_sources
+
+    - name: "Molecule | Verify | Query the installed dovecot-core origin"
+      ansible.builtin.command:
+        argv:
+          - "apt-cache"
+          - "policy"
+          - "dovecot-core"
+      changed_when: false
+      register: __testing_repo_policy
+
+    - name: "Molecule | Verify | Assert Dovecot is installed from the repo.dovecot.org upstream repository"
+      ansible.builtin.assert:
+        that:
+          - "'repo.dovecot.org' in (__testing_repo_sources['content'] | ansible.builtin.b64decode)"
+          # The signing key is managed inline in the deb822 Signed-By field, so the
+          # armored key block must be embedded in the .sources file itself.
+          - "'Signed-By:' in (__testing_repo_sources['content'] | ansible.builtin.b64decode)"
+          - "'Jyo4AQDr/VanhFwPxSlZ3MKY4PWyLw4Fm9mTT2ofcluFttRsDg==' in (__testing_repo_sources['content'] | ansible.builtin.b64decode)"
+          - "'repo.dovecot.org' in __testing_repo_policy['stdout']"
+          - "'Installed: 2:' in __testing_repo_policy['stdout']"
+        fail_msg: >-
+          Expected dovecot-core to be installed from repo.dovecot.org. Source file:
+          {{ __testing_repo_sources['content'] | ansible.builtin.b64decode }}
+          apt-cache policy: {{ __testing_repo_policy['stdout'] | ansible.builtin.default('') }}
+        success_msg: >-
+          dovecot-core is installed from the repo.dovecot.org upstream repository
+          (deb822 source + signing key present, apt-cache policy reports an
+          upstream epoch-2 version).

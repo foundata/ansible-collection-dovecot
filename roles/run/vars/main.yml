@@ -235,6 +235,51 @@ __run_dovecot_external_files_quota_warning_body_default: |
   FR: Votre boîte est pleine à ${PERCENT}%
 
 
+### Upstream package repository (repo.dovecot.org), opt-in via run_dovecot_repository_manage.
+
+# Whether the official Dovecot CE 2.4 repository (repo.dovecot.org) provides
+# packages for this platform. Default false (no coverage). The platform vars file
+# of every covered platform overrides this to true and supplies the connection
+# details if there is support.
+__run_dovecot_repository_supported: false
+
+
+# ASCII-armored signing key for the repo.dovecot.org packages
+#
+# Note: The blank line in the PGP block does not need to be replaced with a '.'
+# because the deb822_repository Ansible module's format_multiline() function
+# handles deb822 escaping automatically. You can paste the raw, unmodified key
+# as-is.
+#
+# Last downloaded from https://repo.dovecot.org/DOVECOT-REPO-GPG-2.4 on 2026-06-15
+__run_dovecot_repository_gpgpubkey: |-
+  -----BEGIN PGP PUBLIC KEY BLOCK-----
+
+  mDMEZ49ZxhYJKwYBBAHaRw8BAQdABhVJFqsoq7gZeXhY/xcz5Vc0i+vM/Df8RDSW
+  lzPHsoC0MkRvdmVjb3QgQ29tbXVuaXR5IEVkaXRpb24gPGRvdmVjb3QtY2VAZG92
+  ZWNvdC5vcmc+iJAEExYIADgWIQTvCIIHn9TtMr+LI7KhsJ74TtxSGQUCZ49ZxgIb
+  AwULCQgHAgYVCgkICwIEFgIDAQIeAQIXgAAKCRChsJ74TtxSGUgvAP9gNC6pZKBV
+  micPYvE2UOTvX8WoEcjWI1UptTxFsHXOjwEA6DZiPoPn9Vvl4PuyG8TavjDslOL8
+  pfn+XKZho2WoAgSJAjMEEAEKAB0WIQQr50qrPudU37nIDTMYo0iu7UCdoQUCZ49a
+  xgAKCRAYo0iu7UCdoVPOD/452ZnhEYW2/VxgDmD7DNaaxdfL/vKifc9MP2sJm+a2
+  T95zHpm/erV2xw3gPpKcLuMaPhkexf6MMhoh9GnUnwEuoOfMWhMAn26RNPFvuUL0
+  a73qoxRY9D+Q/PUNjNsNFj/3c8VIC3DeQhO77wVblLWr9+7J9GrzKtBCkb7zC5Xf
+  8zjLkCWZ15S0kVKNvBsZzEzLYVN/+Kk1s1WP4x1gnQdPm8N7+b4XAQSOUXLjkL5S
+  vGyIUuHwnYHQJeH51L+q8SpzEr59K9OiVYOCm0ICl28xjOjIC9Ym7a8W5Xa5new3
+  ScxNeTuxRItYeDyxXi+YIYGHWYGjmppmlq3VksXirUHfgNoipVSbmGxCukShSsfH
+  f/40iO8DRFRnsUN2lzN4TCcT1ayQvKoyMFuoXQJonuLdbc7E+YLNIPsW66+aoAuW
+  g+5j2QFMFxAJS9IoTCsVQv52MuCj2X5KgwmBcYSgWGpoog9Yx+aaVQQ+X++9FX8r
+  RcnyOGOBaA6htH4g1kUOWwZ/NxObRiA7QLo4Rz6CJrU7ueRIaeSCCXTxCb5dJDeE
+  IB1MZh1artKZ6Rko+cv/Vy0Ojb0JfPDDoQyhblPIXhlJN8/4zFCjxilMDA9CTAB6
+  kY1TVGp138CDnJHZvCdvbrlWf7ktw3+CGKQsZq96Jf756L28dTA42E+WqCBFMZna
+  V7g4BGePWcYSCisGAQQBl1UBBQEBB0A50U//EHUvujYRMNqQ3XMVt8lxU7HtdmsH
+  Bamh6BjmLgMBCAeIeAQYFggAIBYhBO8Iggef1O0yv4sjsqGwnvhO3FIZBQJnj1nG
+  AhsMAAoJEKGwnvhO3FIZEZQBAKuMI//Cjl38pD68fQfcnIMDV2YnXjvaswe7jbDr
+  Jyo4AQDr/VanhFwPxSlZ3MKY4PWyLw4Fm9mTT2ofcluFttRsDg==
+  =eQ4x
+  -----END PGP PUBLIC KEY BLOCK-----
+
+
 ### Override defaults of dependencies used by this role (if any).
 
 # nothing right now

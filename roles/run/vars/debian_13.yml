@@ -1,0 +1,16 @@
+# Internal role variables specific to: Debian 13 (Trixie)
+#
+# Only values specific to the platform and its functionality should be included
+# here. Variables in this file override those defined in vars/main.yml and
+# vars/debian.yml (it is loaded last, as the most specific match).
+
+---
+
+# The connection details below are codename-specific ("trixie"), which is why they live
+# in this per-version file and NOT in vars/debian.yml
+__run_dovecot_repository_supported: true
+
+# deb822 .sources fields for the repo.dovecot.org Debian Trixie repository
+__run_dovecot_repository_apt_uris: "https://repo.dovecot.org/{{ run_dovecot_repository_channel }}/debian/trixie"
+__run_dovecot_repository_apt_suites: "trixie"
+__run_dovecot_repository_apt_components: "main"

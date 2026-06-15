@@ -11,6 +11,8 @@ The `foundata.dovecot.run` Ansible role (part of the `foundata.dovecot` Ansible 
 - [Role variables](#variables)
   - [`run_dovecot_state`](#variable-run_dovecot_state)
   - [`run_dovecot_autoupgrade`](#variable-run_dovecot_autoupgrade)
+  - [`run_dovecot_repository_manage`](#variable-run_dovecot_repository_manage)
+  - [`run_dovecot_repository_channel`](#variable-run_dovecot_repository_channel)
   - [`run_dovecot_service_state`](#variable-run_dovecot_service_state)
   - [`run_dovecot_mail_user_manage`](#variable-run_dovecot_mail_user_manage)
   - [`run_dovecot_mail_user_name`](#variable-run_dovecot_mail_user_name)
@@ -103,6 +105,8 @@ The following variables can be configured for this role:
 |----------|------|----------|---------|------------------------|
 | `run_dovecot_state` | `str` | No | `"present"` | Determines whether the managed resources should be `present` or `absent`.<br><br>`present` ensures that required components, such as software packages, are installed and configured.<br><br>`absent` reverts changes as much as possible, such as […](#variable-run_dovecot_state) |
 | `run_dovecot_autoupgrade` | `bool` | No | `false` | If set to `true`, all managed packages will be upgraded during each Ansible run (e.g., when the package provider detects a newer version than the currently installed one). |
+| `run_dovecot_repository_manage` | `bool` | No | `false` | Whether to install Dovecot from the official upstream package repository at https://repo.dovecot.org/ instead of the distribution's own packages.<br><br>`false` (the default) keeps the distribution as the package source: the role installs whatever […](#variable-run_dovecot_repository_manage) |
+| `run_dovecot_repository_channel` | `str` | No | `"ce-2.4-latest"` | Which repo.dovecot.org channel to use when `run_dovecot_repository_manage` is `true`. Has no effect otherwise.<br><br>`ce-2.4-latest` (the default) follows the latest 2.4.x maintenance release and is recommended so security and bug fixes arrive […](#variable-run_dovecot_repository_channel) |
 | `run_dovecot_service_state` | `str` | No | `"enabled"` | Defines the status of the service(s).<br><br>`enabled`: Service is running and will start automatically at boot.<br><br>`disabled`: Service is stopped and will not start automatically at boot.<br><br>`running`: Service is running but will not start […](#variable-run_dovecot_service_state) |
 | `run_dovecot_mail_user_manage` | `bool` | No | `true` | Controls whether the role manages the system user and group that own the mail storage tree (Dovecot's conventional "vmail" identity).<br><br>When set to `true`, the role creates the group defined by `run_dovecot_mail_group_name` / […](#variable-run_dovecot_mail_user_manage) |
 | `run_dovecot_mail_user_name` | `str` | No | `"vmail"` | Name of the POSIX user that owns Dovecot's mail storage tree.<br><br>Used both for `chown` on `run_dovecot_mail_storage_path` (when `run_dovecot_mail_user_manage` is `true`) and as the canonical user name you typically reference from […](#variable-run_dovecot_mail_user_name) |
@@ -146,6 +150,60 @@ currently installed one).
 - **Type**: `bool`
 - **Required**: No
 - **Default**: `false`
+
+
+
+### `run_dovecot_repository_manage`<a id="variable-run_dovecot_repository_manage"></a>
+
+[*⇑ Back to ToC ⇑*](#toc)
+
+Whether to install Dovecot from the official upstream package repository
+at https://repo.dovecot.org/ instead of the distribution's own packages.
+
+`false` (the default) keeps the distribution as the package source: the
+role installs whatever Dovecot 2.4 version your distribution ships.
+
+`true` configures the signed Dovecot Community Edition (CE) 2.4
+repository from repo.dovecot.org and installs/upgrades Dovecot from it.
+This is useful to pick up newer 2.4.x maintenance releases (security and
+bug fixes) than a frozen distribution release provides.
+
+Coverage caveat: repo.dovecot.org only builds packages for a subset of
+platforms. Among this role's supported platforms it currently covers
+**Debian 13 only** (Ubuntu 26.04 and Fedora have no upstream CE 2.4
+packages). Enabling this on a platform without upstream coverage makes
+the role fail early with an explanatory message — those distributions
+already ship Dovecot 2.4 in their default repositories, so leave this
+`false` there.
+
+See `run_dovecot_repository_channel` to choose or pin the channel.
+
+- **Type**: `bool`
+- **Required**: No
+- **Default**: `false`
+
+
+
+### `run_dovecot_repository_channel`<a id="variable-run_dovecot_repository_channel"></a>
+
+[*⇑ Back to ToC ⇑*](#toc)
+
+Which repo.dovecot.org channel to use when `run_dovecot_repository_manage`
+is `true`. Has no effect otherwise.
+
+`ce-2.4-latest` (the default) follows the latest 2.4.x maintenance
+release and is recommended so security and bug fixes arrive automatically.
+
+Pin to a specific release (e.g. `ce-2.4.4`) for reproducible,
+change-controlled deployments where package versions must not move on
+their own.
+
+Only Dovecot 2.4 Community Edition channels are valid: this role is
+Dovecot 2.4 only and does not support 2.3 or the Pro edition channels.
+
+- **Type**: `str`
+- **Required**: No
+- **Default**: `"ce-2.4-latest"`
 
 
 

@@ -129,4 +129,17 @@
 
 ## dovecot specific
 
-# none right now
+- name: "Init | Fail when the upstream repository is requested on a platform it does not cover"
+  ansible.builtin.assert:
+    that:
+      - __run_dovecot_repository_supported | ansible.builtin.bool
+    fail_msg: >-
+      run_dovecot_repository_manage is true, but the official Dovecot community
+      repositories (repo.dovecot.org) do not provide packages for
+      {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}.
+      Set run_dovecot_repository_manage to false to use the default
+      {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}
+      repositories instead.
+    quiet: true
+  when:
+    - run_dovecot_repository_manage | ansible.builtin.bool

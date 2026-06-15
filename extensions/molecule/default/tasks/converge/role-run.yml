@@ -75,6 +75,14 @@
       run_dovecot_autoupgrade: false
       run_dovecot_service_state: "enabled"
 
+      # Exercise the upstream-repository feature on Debian 13 (the only supported
+      # platform repo.dovecot.org covers): there Dovecot is installed FROM
+      # repo.dovecot.org rather than the distro, so this scenario also proves the
+      # whole stack works on the newer upstream 2.4.x. The other platforms keep
+      # the flag false (enabling it would hard-fail by design) and so continue to
+      # test the distribution-package path. Evaluated per host.
+      run_dovecot_repository_manage: "{{ (ansible_facts['distribution'] == 'Debian') | ansible.builtin.bool }}"
+
       # mail identity. UID/GID are deliberately set high to avoid colliding
       # with whatever resident the test image happens to ship at uid 1000
       # and to really test something odd

@@ -1,0 +1,37 @@
+# Install: Tasks specific to: Debian (os_family or distribution)
+#
+# Only tasks specific to the platform and its functionality should be included
+# here. Tasks in this file will be executed before those defined in
+# install/default.yml.
+
+---
+
+- name: "Setup | Install | Debian | Configure the official Dovecot CE upstream apt repository"
+  when:
+    - run_dovecot_repository_manage | ansible.builtin.bool
+    - __run_dovecot_repository_supported | ansible.builtin.bool
+  block:
+
+    - name: "Setup | Install | Debian | Configure the deb822 apt source"
+      ansible.builtin.deb822_repository:
+        name: "dovecot-ce" # -> /etc/apt/sources.list.d/dovecot-ce.sources
+        state: "present"
+        enabled: true
+        types:
+          - "deb"
+        uris: "{{ __run_dovecot_repository_apt_uris }}"
+        suites: "{{ __run_dovecot_repository_apt_suites }}"
+        components: "{{ __run_dovecot_repository_apt_components }}"
+        signed_by: "{{ __run_dovecot_repository_gpgpubkey }}"
+        # The module parses/writes the deb822 file via the python3-debian
+        # library; let it pull that in on hosts where it is not preinstalled
+        # (minimal images) instead of making the operator stage it separately.
+        install_python_debian: true
+      register: __run_dovecot_repository_source_result
+
+
+    - name: "Setup | Install | Debian | Refresh apt cache after a repository change"
+      ansible.builtin.apt:
+        update_cache: true
+      when:
+        - __run_dovecot_repository_source_result is ansible.builtin.changed

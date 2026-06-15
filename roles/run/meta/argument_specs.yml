@@ -35,6 +35,49 @@ argument_specs:
         type: "bool"
         default: false
 
+      run_dovecot_repository_manage:
+        description: |
+          Whether to install Dovecot from the official upstream package repository at
+          https://repo.dovecot.org/ instead of the distribution's own packages. This
+          role only supports Dovevot 2.4.x or newer.
+
+          `false` (the default) keeps the distribution repository as the package source:
+          the role installs whatever Dovecot version your distribution ships.
+
+          `true` configures the Dovecot Community Edition (CE) repository from
+          repo.dovecot.org and installs/upgrades from it. This is useful to pick up
+          newer releases (propably providing new features and bug fixes) than a frozen
+          distribution release provides.
+
+          Coverage caveat: repo.dovecot.org only builds packages for a subset of the
+          platforms this role supports. Enabling this on a platform without upstream
+          coverage makes the role fail early with an explanatory message, you can still
+          use the Dovecot version in their default repositories, so leave this `false`
+          there.
+
+          See `run_dovecot_repository_channel` to choose or pin the channel.
+        type: "bool"
+        default: false
+
+      run_dovecot_repository_channel:
+        description: |
+          Which repo.dovecot.org channel to use when `run_dovecot_repository_manage`
+          is `true`. This var's value has no effect otherwise. See
+          https://repo.dovecot.org for details. Short summary:
+
+          - Use `ce-2.4-latest` (the default, recommended) follows the latest 2.4.x
+            maintenance release.
+          - Pin to a specific release, such as `ce-2.4.4` for change-controlled
+            deployments where package versions must not change unexpectedly. In this
+            case, also consider whether it makes more sense to set
+            `run_dovecot_repository_manage` to `false` and simply use your
+            distribution's default packages
+
+          This role only supports Dovevot 2.4.x or newer, so using a `ce-2.3[...]`
+          channel won't work.
+        type: "str"
+        default: "ce-2.4-latest"
+
       run_dovecot_service_state:
         description: |
           Defines the status of the service(s).

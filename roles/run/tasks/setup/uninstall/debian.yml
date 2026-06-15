@@ -1,0 +1,12 @@
+# Uninstall: Tasks specific to: Debian (os_family or distribution)
+#
+# Only tasks specific to the platform and its functionality should be included
+# here. Tasks in this file will be executed before those defined in
+# uninstall/default.yml.
+
+---
+
+- name: "Setup | Uninstall | Debian | Remove the Dovecot CE upstream apt source"
+  ansible.builtin.deb822_repository:
+    name: "dovecot-ce"
+    state: "absent"

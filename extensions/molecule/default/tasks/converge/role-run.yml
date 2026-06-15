@@ -72,7 +72,6 @@
 
       # set all role configuration variables
       run_dovecot_state: "present"
-      run_dovecot_autoupgrade: false
       run_dovecot_service_state: "enabled"
 
       # Exercise the upstream-repository feature on Debian 13 (the only supported
@@ -82,6 +81,15 @@
       # the flag false (enabling it would hard-fail by design) and so continue to
       # test the distribution-package path. Evaluated per host.
       run_dovecot_repository_manage: "{{ (ansible_facts['distribution'] == 'Debian') | ansible.builtin.bool }}"
+
+      # On the Debian repo path, also turn on autoupgrade so dovecot-core is
+      # actually installed/upgraded FROM repo.dovecot.org (state=latest). With
+      # state=present (autoupgrade=false) an already-distro-installed dovecot-core
+      # is NOT cross-graded to the upstream build, so the verify's
+      # "installed from upstream" assert would fail on a re-used container. This
+      # mirrors the realistic intent: you enable the upstream repo to get its
+      # (newer) packages. Off on the other platforms (distro-package path).
+      run_dovecot_autoupgrade: "{{ (ansible_facts['distribution'] == 'Debian') | ansible.builtin.bool }}"
 
       # mail identity. UID/GID are deliberately set high to avoid colliding
       # with whatever resident the test image happens to ship at uid 1000

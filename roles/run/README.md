@@ -236,6 +236,13 @@ repo.dovecot.org and installs/upgrades from it. This is useful to pick up
 newer releases (propably providing new features and bug fixes) than a frozen
 distribution release provides.
 
+Note on an already-installed Dovecot: enabling this changes the package
+SOURCE, it does not cross-grade a package that is already installed from
+the distribution. A fresh install picks the upstream build, but an
+existing one is only moved to it when `run_dovecot_autoupgrade` is `true`
+(or you upgrade it manually); with the default `present` state, apt keeps
+the version that is already installed.
+
 Coverage caveat: repo.dovecot.org only builds packages for a subset of the
 platforms this role supports. Enabling this on a platform without upstream
 coverage makes the role fail early with an explanatory message, you can still

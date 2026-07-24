@@ -31,7 +31,46 @@ It provides resources to manage and use [Dovecot](https://dovecot.org/), a secur
 
 ### Role: `foundata.dovecot.run`
 
-The primary resource in this collection to configure and maintain Dovecot. See the [role's `README.md`](./roles/run/README.md) for more information and usage examples.
+The primary role in this collection to configure and maintain Dovecot. [Its `README.md`](./roles/run/README.md) covers configuration, usage examples, and more:
+
+<!-- ANSIBLE DOCSMITH TOC-FULL run START -->
+- [Ansible role: `foundata.dovecot.run`](roles/run/README.md#ansible-role-foundatadovecotrun)
+  - [Table of contents](roles/run/README.md#toc)
+  - [Example playbooks, using this role](roles/run/README.md#examples)
+  - [Supported tags](roles/run/README.md#tags)
+  - [Role variables](roles/run/README.md#variables)
+    - [`run_dovecot_state`](roles/run/README.md#variable-run_dovecot_state)
+    - [`run_dovecot_autoupgrade`](roles/run/README.md#variable-run_dovecot_autoupgrade)
+    - [`run_dovecot_repository_manage`](roles/run/README.md#variable-run_dovecot_repository_manage)
+    - [`run_dovecot_repository_channel`](roles/run/README.md#variable-run_dovecot_repository_channel)
+    - [`run_dovecot_service_state`](roles/run/README.md#variable-run_dovecot_service_state)
+    - [`run_dovecot_mail_user_manage`](roles/run/README.md#variable-run_dovecot_mail_user_manage)
+    - [`run_dovecot_mail_user_name`](roles/run/README.md#variable-run_dovecot_mail_user_name)
+    - [`run_dovecot_mail_user_uid`](roles/run/README.md#variable-run_dovecot_mail_user_uid)
+    - [`run_dovecot_mail_group_name`](roles/run/README.md#variable-run_dovecot_mail_group_name)
+    - [`run_dovecot_mail_group_gid`](roles/run/README.md#variable-run_dovecot_mail_group_gid)
+    - [`run_dovecot_mail_storage_path`](roles/run/README.md#variable-run_dovecot_mail_storage_path)
+    - [`run_dovecot_settings`](roles/run/README.md#variable-run_dovecot_settings)
+    - [`run_dovecot_settings_extra_content`](roles/run/README.md#variable-run_dovecot_settings_extra_content)
+    - [`run_dovecot_passdbs`](roles/run/README.md#variable-run_dovecot_passdbs)
+    - [`run_dovecot_userdbs`](roles/run/README.md#variable-run_dovecot_userdbs)
+    - [`run_dovecot_external_files`](roles/run/README.md#variable-run_dovecot_external_files)
+      - [`run_dovecot_external_files['master_users']`](roles/run/README.md#variable-run_dovecot_external_files-sub-master_users)
+        - [`run_dovecot_external_files['master_users']['enabled']`](roles/run/README.md#variable-run_dovecot_external_files-sub-master_users-sub-enabled)
+        - [`run_dovecot_external_files['master_users']['path']`](roles/run/README.md#variable-run_dovecot_external_files-sub-master_users-sub-path)
+        - [`run_dovecot_external_files['master_users']['entries']`](roles/run/README.md#variable-run_dovecot_external_files-sub-master_users-sub-entries)
+          - [`run_dovecot_external_files['master_users']['entries']['username']`](roles/run/README.md#variable-run_dovecot_external_files-sub-master_users-sub-entries-sub-username)
+          - [`run_dovecot_external_files['master_users']['entries']['password_hash']`](roles/run/README.md#variable-run_dovecot_external_files-sub-master_users-sub-entries-sub-password_hash)
+      - [`run_dovecot_external_files['quota_warning_script']`](roles/run/README.md#variable-run_dovecot_external_files-sub-quota_warning_script)
+        - [`run_dovecot_external_files['quota_warning_script']['enabled']`](roles/run/README.md#variable-run_dovecot_external_files-sub-quota_warning_script-sub-enabled)
+        - [`run_dovecot_external_files['quota_warning_script']['path']`](roles/run/README.md#variable-run_dovecot_external_files-sub-quota_warning_script-sub-path)
+        - [`run_dovecot_external_files['quota_warning_script']['from']`](roles/run/README.md#variable-run_dovecot_external_files-sub-quota_warning_script-sub-from)
+        - [`run_dovecot_external_files['quota_warning_script']['subject']`](roles/run/README.md#variable-run_dovecot_external_files-sub-quota_warning_script-sub-subject)
+        - [`run_dovecot_external_files['quota_warning_script']['body']`](roles/run/README.md#variable-run_dovecot_external_files-sub-quota_warning_script-sub-body)
+  - [Dependencies](roles/run/README.md#dependencies)
+  - [Compatibility](roles/run/README.md#compatibility)
+  - [External requirements](roles/run/README.md#requirements)
+<!-- ANSIBLE DOCSMITH TOC-FULL run END -->
 
 
 

@@ -422,4 +422,102 @@ run_dovecot_userdbs: []
 # - Type: dict
 # - Required: No
 # - Default: {}
+# - Dict attributes:
+#   - master_users:
+#     Renders Dovecot's master-users passwd-file at `path`. The file is consumed
+#     by a `passdb` entry with `driver: passwd-file` and `master: true`.
+#
+#     The role does NOT hash passwords. Generate the hash out of band with
+#     `doveadm pw -s BLF-CRYPT` (Dovecot's recommended scheme) or `htpasswd -B`
+#     and place the resulting `{SCHEME}hash` string into `password_hash`.
+#
+#     `enabled: false` removes the file if present.
+#     - Type: dict
+#     - Required: No
+#     - Dict attributes:
+#       - enabled:
+#         When `true` (the default), the role renders the file at `path`. When
+#         `false`, the role removes the file if present.
+#         - Type: bool
+#         - Required: No
+#         - Default: true
+#       - path:
+#         Absolute path where the rendered passwd-file is written. The same path
+#         must be referenced from a `run_dovecot_passdbs` entry using
+#         `driver: passwd-file` with `passwd_file_path: "<this path>"`.
+#
+#         Conventions differ by distribution (Debian historically uses
+#         `/etc/dovecot/master-users`, RHEL/Fedora
+#         `/etc/dovecot/passwd.masterusers`); the role's per-platform
+#         `vars/<platform>.yml` overrides the default below to match the local
+#         convention. Override here only if you want a non-standard location.
+#         - Type: str
+#         - Required: No
+#         - Default: /etc/dovecot/passwd.masterusers
+#       - entries:
+#         List of master-user entries to write into the passwd-file. Each entry
+#         maps to one line in `username:{SCHEME}hash` form.
+#         - Type: list
+#         - Required: No
+#         - List elements: dict
+#         - Dict attributes:
+#           - username:
+#             Master-user login name. Authenticated as `<real-user>*<username>`
+#             against Dovecot per the master user convention.
+#             - Type: str
+#             - Required: No
+#           - password_hash:
+#             Full Dovecot password string including the scheme prefix in curly
+#             braces, e.g. `{BLF-CRYPT}$2y$05$...`. The role writes the value
+#             verbatim; it does not hash or validate the scheme.
+#
+#             Keep the value in Ansible Vault or another secret source — this
+#             field is NOT marked `no_log`.
+#             - Type: str
+#             - Required: No
+#   - quota_warning_script: Renders a shell script that Dovecot's
+#     `"service quota-warning": { executable: "script <path>" ... }` can invoke
+#     when a user crosses a configured quota threshold. The script is deployed
+#     with mode `0755`, owner `root`, group `root`.
+#
+#     The script is independent of the `service quota-warning` block itself, you
+#     still need to declare that service inside `run_dovecot_settings` and
+#     reference this `path` from its `executable` setting.
+#
+#     `enabled: false` removes the file if present (note: it does NOT remove the
+#     corresponding `service quota-warning` block from `run_dovecot_settings` —
+#     manage that explicitly there).
+#     - Type: dict
+#     - Required: No
+#     - Dict attributes:
+#       - enabled:
+#         When `true` (the default), the role renders the script at `path`. When
+#         `false`, the role removes the file if present.
+#         - Type: bool
+#         - Required: No
+#         - Default: true
+#       - path:
+#         Absolute path where the rendered script is written. The same path must
+#         be referenced from
+#         `run_dovecot_settings['service quota-warning']['executable']` (as
+#         `script <path>` value).
+#         - Type: path
+#         - Required: No
+#       - from: `From:` header used in the warning mail the script sends.
+#         - Type: str
+#         - Required: No
+#       - subject:
+#         `Subject:` header used in the warning mail. Dovecot's `${PERCENT}`
+#         placeholder is expanded by the script at runtime.
+#         - Type: str
+#         - Required: No
+#       - body: Message body of the warning mail. Multi-line strings are written
+#         verbatim; `${PERCENT}` placeholders are expanded by the script at
+#         runtime.
+#         - Type: str
+#         - Required: No
+#         - Default:
+#           EN: Your mailbox is now ${PERCENT}% full.
+#           DE: Ihr Postfach ist zu ${PERCENT}% belegt.
+#           FR: Votre boîte est pleine à ${PERCENT}%
 run_dovecot_external_files: {}

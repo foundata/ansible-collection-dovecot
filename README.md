@@ -31,7 +31,7 @@ It provides resources to manage and use [Dovecot](https://dovecot.org/), a secur
 
 ### Role: `foundata.dovecot.run`
 
-The primary role in this collection to configure and maintain Dovecot. [Its `README.md`](./roles/run/README.md) covers configuration, usage examples, and more:
+The primary role in this collection installs and maintains Dovecot 2.4+, including its package source, service, mail storage account, configuration settings, authentication databases, and supporting files. [Its `README.md`](./roles/run/README.md) covers configuration, usage examples, and more:
 
 <!-- ANSIBLE DOCSMITH TOC-FULL run START -->
 - [Ansible role: `foundata.dovecot.run`](roles/run/README.md#ansible-role-foundatadovecotrun)

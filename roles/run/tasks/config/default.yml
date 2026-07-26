@@ -10,6 +10,10 @@
     group: "{{ __run_dovecot_dovecotconf_file_group }}"
     mode: "{{ __run_dovecot_dovecotconf_file_mode }}"
     validate: "{{ __run_dovecot_doveconf_exec_path }} -c %s"
+  # The rendered file can contain credentials (e.g. an LDAP bind password from
+  # run_dovecot_passdbs), which must not be leaked into diff output. diff
+  # instead of no_log on purpose: doveconf validation errors must stay visible.
+  diff: false
   notify:
     - "run_dovecot: restart dovecot.service"
 
@@ -38,6 +42,7 @@
         # it must be readable by the dovecot auth group, not the mail group.
         group: "{{ __run_dovecot_auth_group }}"
         mode: "u=rw,g=r,o=" # 0640, contains password hashes
+      no_log: true # the rendered file contains password hashes, keep them out of logs and diffs
       when:
         - __run_dovecot_external_files_master_users_enabled | ansible.builtin.bool
       notify:

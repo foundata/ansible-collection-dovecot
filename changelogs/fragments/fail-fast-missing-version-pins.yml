@@ -1,0 +1,12 @@
+---
+
+bugfixes:
+  - >
+    ``run`` role - The role now fails fast with an actionable message when
+    ``run_dovecot_settings`` is missing ``dovecot_config_version`` or
+    ``dovecot_storage_version``. Dovecot 2.4 refuses configurations without
+    both pins, so the default empty settings rendered a config that only
+    failed later in the template's ``doveconf`` validation with a less
+    actionable error. The documentation no longer presents
+    ``dovecot_storage_version`` as optional (both pins are mandatory,
+    verified against Dovecot 2.4.1).

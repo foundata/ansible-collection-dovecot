@@ -130,6 +130,27 @@
 
 ## dovecot specific
 
+# Dovecot 2.4 refuses any configuration in which dovecot_config_version is
+# not the first setting or dovecot_storage_version is unset (verified with
+# doveconf 2.4.1). Without this assert the run would only fail later, in the
+# template's doveconf validation, with a less actionable error. The role
+# deliberately does not guess the values: dovecot_storage_version pins the
+# on-disk storage format and must never be bumped silently.
+- name: "Init | Fail when the mandatory Dovecot version pins are missing from run_dovecot_settings"
+  ansible.builtin.assert:
+    that:
+      - run_dovecot_settings['dovecot_config_version'] is ansible.builtin.defined
+      - run_dovecot_settings['dovecot_storage_version'] is ansible.builtin.defined
+    fail_msg: >-
+      Dovecot 2.4 requires both "dovecot_config_version" and
+      "dovecot_storage_version" to be set. Add them to "run_dovecot_settings",
+      e.g. the Dovecot release your configuration is written for (like
+      "2.4.0").
+    quiet: true
+  when:
+    - run_dovecot_state == 'present'
+
+
 - name: "Init | Fail when the upstream repository is requested on a platform it does not cover"
   ansible.builtin.assert:
     that:

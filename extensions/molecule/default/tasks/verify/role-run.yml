@@ -1,14 +1,10 @@
 # Check collection role "run" outcomes.
 
-- name: "Molecule | Verify | Initialize the foundata.dovecot.run role (without actually running it; get and expose variables)"
-  ansible.builtin.include_role:
-    name: "foundata.dovecot.run"
-    tasks_from: "init"
-    public: true
-
-
 ## Preparation
 
+# Restore the converge-time parameters BEFORE initializing the role: init
+# asserts the mandatory Dovecot version pins in run_dovecot_settings, which
+# would fail against the role's empty default settings.
 - name: "Molecule | Verify | Set run_dovecot_* and __testing_* parameters as facts from __testing_state"
   ansible.builtin.set_fact:
     "{{ item['key'] }}": "{{ item['value'] }}"
@@ -19,6 +15,13 @@
       | ansible.builtin.selectattr('key', 'match', '^(run_dovecot_|__testing_)')
       | ansible.builtin.list
     }}
+
+
+- name: "Molecule | Verify | Initialize the foundata.dovecot.run role (without actually running it; get and expose variables)"
+  ansible.builtin.include_role:
+    name: "foundata.dovecot.run"
+    tasks_from: "init"
+    public: true
 
 
 ## Service state
@@ -831,3 +834,56 @@
           dovecot-core is installed from the repo.dovecot.org upstream repository
           (deb822 source + signing key present, apt-cache policy reports an
           upstream epoch-2 version).
+
+
+## Mandatory version pins: init must fail fast without them (init-only)
+#
+# Dovecot 2.4 refuses configurations without dovecot_config_version and
+# dovecot_storage_version, so the role asserts them early with an actionable
+# message. Strip the pins from the converge settings, re-run init and expect
+# exactly that assert to fail.
+
+- name: "Molecule | Verify | Validate rejection of missing version pins (init-only)"
+  block:
+
+    - name: "Molecule | Verify | Version pins: save the current settings"
+      ansible.builtin.set_fact:
+        __testing_saved_settings: "{{ run_dovecot_settings }}"
+
+    - name: "Molecule | Verify | Version pins: strip the pins from the settings"
+      ansible.builtin.set_fact:
+        run_dovecot_settings: >-
+          {{
+            run_dovecot_settings
+            | ansible.builtin.dict2items
+            | ansible.builtin.rejectattr('key', 'in', ['dovecot_config_version', 'dovecot_storage_version'])
+            | ansible.builtin.items2dict
+          }}
+
+    - name: "Molecule | Verify | Version pins: include the role's init (must fail)"
+      ansible.builtin.include_role:
+        name: "foundata.dovecot.run"
+        tasks_from: "init"
+
+    - name: "Molecule | Verify | Version pins: force a failure because init accepted the stripped settings"
+      ansible.builtin.fail:
+        msg: >-
+          The role's init accepted run_dovecot_settings without
+          dovecot_config_version and dovecot_storage_version.
+
+  rescue:
+
+    - name: "Molecule | Verify | Version pins: assert the run failed in the version pin assert"
+      ansible.builtin.assert:
+        that:
+          - (ansible_failed_task['name'] | ansible.builtin.default('')) is ansible.builtin.search('mandatory Dovecot version pins')
+        fail_msg: >-
+          The run failed, but not in the version pin assert as expected
+          (failed task: '{{ ansible_failed_task['name'] | ansible.builtin.default('unknown') }}').
+        success_msg: "Missing Dovecot version pins are rejected by the role's init with an actionable message."
+
+  always:
+
+    - name: "Molecule | Verify | Version pins: restore the saved settings"
+      ansible.builtin.set_fact:
+        run_dovecot_settings: "{{ __testing_saved_settings }}"

@@ -453,15 +453,16 @@ Rules:
   `'unix_listener "/var/spool/postfix/private/auth"'`. Keys without
   an inline name (e.g. `dict_server:`) render as anonymous blocks.
 
-The `dovecot_config_version` key (which Dovecot 2.4 REQUIRES) is always
-emitted as the first non-comment line in `dovecot.conf`, regardless of
-where it appears in your YAML. Set it (and `dovecot_storage_version`,
-if you want to pin the on-disk storage format too) here like any other
-setting.
+The `dovecot_config_version` and `dovecot_storage_version` keys are
+both REQUIRED by Dovecot 2.4; the role fails fast when either is
+missing. `dovecot_config_version` is always emitted as the first
+non-comment line in `dovecot.conf`, regardless of where it appears
+in your YAML. Set both here like any other setting.
 
 Default is `{}` (empty) on purpose: the role ships zero opinionated
 Dovecot defaults. Dovecot's compiled-in defaults supply everything you
-do not set explicitly.
+do not set explicitly — only the two version pins above always have
+to be provided.
 
 The `mail_plugins` setting (top-level and per `"protocol <name>":`
 block) is parsed at task time to derive the set of distribution

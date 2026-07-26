@@ -30,7 +30,7 @@ releases:
         '
     fragments:
       - 1.0.1-release.yaml
-      - mailserver-playbook-secret-and-from-parameters.yaml
+      - mailserver-secret-and-from-parameters.yaml
     release_date: '2026-06-15'
   1.0.0:
     changes:

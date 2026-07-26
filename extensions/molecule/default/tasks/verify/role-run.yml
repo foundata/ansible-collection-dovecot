@@ -887,3 +887,183 @@
     - name: "Molecule | Verify | Version pins: restore the saved settings"
       ansible.builtin.set_fact:
         run_dovecot_settings: "{{ __testing_saved_settings }}"
+
+
+## Handlers: config changes reload, never restart (integration)
+#
+# A dovecot.conf change must reach the running service via reload: the main
+# PID stays (ExecMainStartTimestamp unchanged), active sessions survive. The
+# service-state gate must keep handlers away from unmanaged services. The
+# sequence reconfigures the running service (changed IMAP greeting), checks
+# the runtime picked it up without a restart, then proves a change under
+# "unmanaged" reaches neither the service nor its runtime configuration, and
+# finally reverts - all without a single restart.
+
+- name: "Molecule | Verify | Handlers | Get ExecMainStartTimestamp before reconfiguration"
+  ansible.builtin.command:
+    argv:
+      - "/usr/bin/systemctl"
+      - "show"
+      - "--property=ExecMainStartTimestamp"
+      - "--value"
+      - "{{ __run_dovecot_service_name }}"
+  changed_when: false
+  register: __testing_handlers_ts_before
+
+
+- name: "Molecule | Verify | Handlers | Save the current parameters and apply a changed IMAP greeting"
+  ansible.builtin.set_fact:
+    __testing_handlers_saved_settings: "{{ run_dovecot_settings }}"
+    __testing_handlers_saved_service_state: "{{ run_dovecot_service_state }}"
+    run_dovecot_settings: >-
+      {{ run_dovecot_settings | ansible.builtin.combine({'login_greeting': 'Dovecot ready (molecule reload check).'}) }}
+
+
+- name: "Molecule | Verify | Handlers | Re-run the foundata.dovecot.run role with the changed greeting"
+  ansible.builtin.include_role:
+    name: "foundata.dovecot.run"
+
+
+- name: "Molecule | Verify | Handlers | Run the notified handlers (reload expected)"
+  ansible.builtin.meta: "flush_handlers"
+
+
+- name: "Molecule | Verify | Handlers | Fetch the IMAP greeting after the reload"
+  ansible.builtin.command:
+    argv:
+      - "{{ __testing_openssl_executable }}"
+      - "s_client"
+      - "-connect"
+      - "127.0.0.1:993"
+      - "-quiet"
+      - "-crlf"
+    stdin: "a1 LOGOUT\n"
+  changed_when: false
+  failed_when: false
+  register: __testing_handlers_greeting_reload
+
+
+- name: "Molecule | Verify | Handlers | Get ExecMainStartTimestamp after the reload"
+  ansible.builtin.command:
+    argv:
+      - "/usr/bin/systemctl"
+      - "show"
+      - "--property=ExecMainStartTimestamp"
+      - "--value"
+      - "{{ __run_dovecot_service_name }}"
+  changed_when: false
+  register: __testing_handlers_ts_reload
+
+
+- name: "Molecule | Verify | Handlers | Assert the change is live and the service was not restarted"
+  ansible.builtin.assert:
+    that:
+      - (__testing_handlers_ts_before['stdout'] | ansible.builtin.trim | ansible.builtin.length) > 0
+      - "'molecule reload check' in __testing_handlers_greeting_reload['stdout']"
+      - __testing_handlers_ts_reload['stdout'] == __testing_handlers_ts_before['stdout']
+    fail_msg: >-
+      Reconfiguring the running service did not behave as expected. Greeting:
+      {{ __testing_handlers_greeting_reload['stdout'] | ansible.builtin.default('') }};
+      ExecMainStartTimestamp before: '{{ __testing_handlers_ts_before['stdout'] }}',
+      after: '{{ __testing_handlers_ts_reload['stdout'] }}' (a difference means the
+      service was restarted instead of reloaded).
+    success_msg: >-
+      The changed greeting is live and ExecMainStartTimestamp is unchanged:
+      the configuration change was applied via reload, not restart.
+
+
+- name: "Molecule | Verify | Handlers | Apply another greeting under an unmanaged service state"
+  ansible.builtin.set_fact:
+    run_dovecot_service_state: "unmanaged"
+    run_dovecot_settings: >-
+      {{ __testing_handlers_saved_settings | ansible.builtin.combine({'login_greeting': 'Dovecot ready (unmanaged check).'}) }}
+
+
+- name: "Molecule | Verify | Handlers | Re-run the foundata.dovecot.run role (unmanaged)"
+  ansible.builtin.include_role:
+    name: "foundata.dovecot.run"
+
+
+- name: "Molecule | Verify | Handlers | Run the notified handlers (all must be gated off)"
+  ansible.builtin.meta: "flush_handlers"
+
+
+- name: "Molecule | Verify | Handlers | Fetch the IMAP greeting after the unmanaged run"
+  ansible.builtin.command:
+    argv:
+      - "{{ __testing_openssl_executable }}"
+      - "s_client"
+      - "-connect"
+      - "127.0.0.1:993"
+      - "-quiet"
+      - "-crlf"
+    stdin: "a1 LOGOUT\n"
+  changed_when: false
+  failed_when: false
+  register: __testing_handlers_greeting_unmanaged
+
+
+- name: "Molecule | Verify | Handlers | Get ExecMainStartTimestamp after the unmanaged run"
+  ansible.builtin.command:
+    argv:
+      - "/usr/bin/systemctl"
+      - "show"
+      - "--property=ExecMainStartTimestamp"
+      - "--value"
+      - "{{ __run_dovecot_service_name }}"
+  changed_when: false
+  register: __testing_handlers_ts_unmanaged
+
+
+- name: "Molecule | Verify | Handlers | Assert the unmanaged service state keeps handlers away"
+  ansible.builtin.assert:
+    that:
+      # runtime still serves the previously reloaded config, the service was
+      # neither reloaded nor restarted
+      - "'unmanaged check' not in __testing_handlers_greeting_unmanaged['stdout']"
+      - "'molecule reload check' in __testing_handlers_greeting_unmanaged['stdout']"
+      - __testing_handlers_ts_unmanaged['stdout'] == __testing_handlers_ts_before['stdout']
+    fail_msg: >-
+      A configuration change under run_dovecot_service_state=unmanaged reached the
+      service. Greeting: {{ __testing_handlers_greeting_unmanaged['stdout'] | ansible.builtin.default('') }};
+      ExecMainStartTimestamp before: '{{ __testing_handlers_ts_before['stdout'] }}',
+      after: '{{ __testing_handlers_ts_unmanaged['stdout'] }}'.
+    success_msg: "Handlers left the unmanaged service alone (runtime configuration and start timestamp unchanged)."
+
+
+- name: "Molecule | Verify | Handlers | Restore the saved parameters"
+  ansible.builtin.set_fact:
+    run_dovecot_settings: "{{ __testing_handlers_saved_settings }}"
+    run_dovecot_service_state: "{{ __testing_handlers_saved_service_state }}"
+
+
+- name: "Molecule | Verify | Handlers | Re-run the foundata.dovecot.run role with the restored parameters"
+  ansible.builtin.include_role:
+    name: "foundata.dovecot.run"
+
+
+- name: "Molecule | Verify | Handlers | Run the notified handlers again (reload expected)"
+  ansible.builtin.meta: "flush_handlers"
+
+
+- name: "Molecule | Verify | Handlers | Get ExecMainStartTimestamp after the restore"
+  ansible.builtin.command:
+    argv:
+      - "/usr/bin/systemctl"
+      - "show"
+      - "--property=ExecMainStartTimestamp"
+      - "--value"
+      - "{{ __run_dovecot_service_name }}"
+  changed_when: false
+  register: __testing_handlers_ts_restore
+
+
+- name: "Molecule | Verify | Handlers | Assert the whole sequence never restarted the service"
+  ansible.builtin.assert:
+    that:
+      - __testing_handlers_ts_restore['stdout'] == __testing_handlers_ts_before['stdout']
+    fail_msg: >-
+      The service was restarted at some point of the reconfiguration sequence
+      (ExecMainStartTimestamp changed from '{{ __testing_handlers_ts_before['stdout'] }}'
+      to '{{ __testing_handlers_ts_restore['stdout'] }}').
+    success_msg: "Two reconfigurations and one unmanaged run completed without a single service restart."

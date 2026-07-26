@@ -15,7 +15,7 @@
   # instead of no_log on purpose: doveconf validation errors must stay visible.
   diff: false
   notify:
-    - "run_dovecot: restart dovecot.service"
+    - "run_dovecot: reload dovecot.service"
 
 
 ### External files: Master users passwd-file
@@ -46,7 +46,7 @@
       when:
         - __run_dovecot_external_files_master_users_enabled | ansible.builtin.bool
       notify:
-        - "run_dovecot: restart dovecot.service"
+        - "run_dovecot: reload dovecot.service"
 
     - name: "Config | Default | External files | Master users: Remove passwd-file (disabled)"
       ansible.builtin.file:
@@ -55,7 +55,7 @@
       when:
         - not (__run_dovecot_external_files_master_users_enabled | ansible.builtin.bool)
       notify:
-        - "run_dovecot: restart dovecot.service"
+        - "run_dovecot: reload dovecot.service"
 
 
 ### External files: Quota-warning script

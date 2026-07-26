@@ -1,0 +1,11 @@
+---
+
+minor_changes:
+  - >
+    ``run`` role - Configuration changes (``dovecot.conf``, master-users
+    passwd-file) now notify a service reload instead of a restart, so active
+    IMAP sessions survive ordinary reconfiguration. Package installations and
+    upgrades now notify a restart instead (new binaries only take effect with
+    one). The previously unreachable reload handler skips services that are
+    not running yet: on fresh installs the service phase then starts Dovecot
+    with the new configuration.

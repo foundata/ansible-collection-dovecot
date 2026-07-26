@@ -1,0 +1,8 @@
+---
+
+bugfixes:
+  - >
+    ``run`` role - ``run_dovecot_state: "absent"`` now also removes the
+    master-users passwd-file and the quota-warning script (at their currently
+    configured paths plus the default paths). They were left behind before,
+    including the password hashes in the passwd-file.

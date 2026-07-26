@@ -13,9 +13,10 @@
 # disk but dormant, see the {{ __run_dovecot_confd_tombstone_file_path | ansible.builtin.basename }}
 # in that directory.
 
-{# Dovecot 2.4 REQUIRES dovecot_config_version as the first non-comment line.
-   Emit it (and dovecot_storage_version, if present) up front, regardless of
-   where they appear in the user's run_dovecot_settings dict.
+{# Dovecot 2.4 REQUIRES dovecot_config_version as the first non-comment line
+   and dovecot_storage_version to be set; init asserts both are present.
+   Emit them up front, regardless of where they appear in the user's
+   run_dovecot_settings dict.
 #}
 {% if run_dovecot_settings['dovecot_config_version'] is defined -%}
 dovecot_config_version = {{ run_dovecot_settings['dovecot_config_version'] }}

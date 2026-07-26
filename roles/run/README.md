@@ -740,10 +740,10 @@ same path must be referenced from a `run_dovecot_passdbs` entry
 using `driver: passwd-file` with `passwd_file_path: "<this path>"`.
 
 Conventions differ by distribution (Debian historically uses
-`/etc/dovecot/master-users`, RHEL/Fedora `/etc/dovecot/passwd.masterusers`);
-the role's per-platform `vars/<platform>.yml` overrides the
-default below to match the local convention. Override here only
-if you want a non-standard location.
+`/etc/dovecot/master-users`, RHEL/Fedora `/etc/dovecot/passwd.masterusers`).
+The role deliberately uses the same default on every platform
+so the path you reference from `run_dovecot_passdbs` stays
+stable. Override here if you prefer another location.
 
 - **Type**: `str`
 - **Required**: No

@@ -1,0 +1,9 @@
+---
+
+bugfixes:
+  - >
+    ``run`` role - The ``master_users`` ``path`` documentation no longer
+    claims the role overrides the default per platform (no such platform
+    override exists and none is planned: a single stable default keeps the
+    path referenced from ``run_dovecot_passdbs`` identical on every
+    platform).

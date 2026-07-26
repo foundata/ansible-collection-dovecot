@@ -1,0 +1,12 @@
+---
+
+bugfixes:
+  - >
+    ``run`` role - The rendered quota-warning script now delivers the warning
+    mail with ``dovecot-lda -o quota_enforce=no``. The former
+    ``plugin/quota=...:noenforcing`` override is Dovecot 2.3 syntax that 2.4
+    silently ignores, so the warning mail was rejected exactly when the
+    mailbox was completely full. The ``run_dovecot_settings`` documentation
+    example also no longer shows the removed 2.3 ``plugin { ... }`` block
+    (replaced with the 2.4 ``quota "User quota"`` and ``sieve_script``
+    equivalents, verified against Dovecot 2.4.1).

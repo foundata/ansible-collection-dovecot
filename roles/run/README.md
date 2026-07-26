@@ -450,8 +450,8 @@ Rules:
 - Dict value → `key { ... }` (recursive).
 - Block name encoded inline in the YAML key, split on first
   whitespace: `"service imap-login"`, `"namespace inbox"`,
-  `'unix_listener "/var/spool/postfix/private/auth"'`, `plugin:`
-  (anonymous).
+  `'unix_listener "/var/spool/postfix/private/auth"'`. Keys without
+  an inline name (e.g. `dict_server:`) render as anonymous blocks.
 
 The `dovecot_config_version` key (which Dovecot 2.4 REQUIRES) is always
 emitted as the first non-comment line in `dovecot.conf`, regardless of
@@ -507,9 +507,13 @@ run_dovecot_settings:
   "protocol imap":
     mail_plugins: "$mail_plugins imap_acl imap_quota"
 
-  plugin:
-    sieve: "file:~/sieve;active=~/sieve.active"
-    quota: "dict:User quota::file:%h/dovecot-quota"
+  'quota "User quota"':
+    storage_size: "1G"
+
+  "sieve_script personal":
+    driver: "file"
+    path: "~/sieve"
+    active_path: "~/.dovecot.sieve"
 ```
 
 Reference for all Dovecot 2.4 settings and block types:

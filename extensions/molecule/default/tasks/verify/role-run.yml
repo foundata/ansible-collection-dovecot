@@ -329,6 +329,21 @@
       ('{{ __run_dovecot_dovecot_lda_exec_path }}') and the rendered Subject header.
 
 
+- name: "Molecule | Verify | Assert quota-warning script uses the Dovecot 2.4 no-enforcement override (not the removed 2.3 syntax)"
+  ansible.builtin.assert:
+    that:
+      - "'-o quota_enforce=no' in (__testing_quotawarning_content['content'] | ansible.builtin.b64decode)"
+      # the option form of the removed 2.3 override; the plain string also
+      # appears in an explanatory template comment, so match the "-o" usage
+      - "'-o \"plugin/quota' not in (__testing_quotawarning_content['content'] | ansible.builtin.b64decode)"
+    fail_msg: >-
+      The quota-warning script does not deliver via 'dovecot-lda -o quota_enforce=no'. The former
+      2.3 'plugin/quota=...:noenforcing' override is silently ignored by Dovecot 2.4, so the
+      warning mail would be rejected exactly when the mailbox is full. Content:
+      {{ __testing_quotawarning_content['content'] | ansible.builtin.b64decode }}
+    success_msg: "The quota-warning script disables quota enforcement via the Dovecot 2.4 'quota_enforce=no' override."
+
+
 ## Configuration validity (doveconf -n round-trip)
 
 - name: "Molecule | Verify | Validate the overall Dovecot configuration with doveconf -n"

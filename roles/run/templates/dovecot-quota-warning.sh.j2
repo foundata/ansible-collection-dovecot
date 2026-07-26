@@ -40,11 +40,10 @@ fi
 # Process
 ################################################################################
 
-# -o <Options>: overwrite the options to deliver the warning mail even if the
-# mailbox is completely full. Basically preserve your original "quota" setting
-# and insert ":noenforcing" to proper location
-# in it.
-cat << EOF | {{ __run_dovecot_dovecot_lda_exec_path }} -d "${USER}" -o "plugin/quota=dict:User quota::noenforcing:file:%h/dovecot-quota"
+# -o quota_enforce=no: deliver the warning mail even if the mailbox is already
+# completely full (Dovecot 2.4 replacement for the former 2.3
+# "plugin/quota=...:noenforcing" override, which 2.4 silently ignores).
+cat << EOF | {{ __run_dovecot_dovecot_lda_exec_path }} -d "${USER}" -o quota_enforce=no
 From: {{ __run_dovecot_external_files_quota_warning_from }}
 Subject: {{ __run_dovecot_external_files_quota_warning_subject }}
 

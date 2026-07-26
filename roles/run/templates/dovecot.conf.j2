@@ -18,23 +18,23 @@
    Emit them up front, regardless of where they appear in the user's
    run_dovecot_settings dict.
 #}
-{% if run_dovecot_settings['dovecot_config_version'] is defined -%}
+{% if run_dovecot_settings['dovecot_config_version'] is ansible.builtin.defined -%}
 dovecot_config_version = {{ run_dovecot_settings['dovecot_config_version'] }}
 {% endif -%}
-{% if run_dovecot_settings['dovecot_storage_version'] is defined -%}
+{% if run_dovecot_settings['dovecot_storage_version'] is ansible.builtin.defined -%}
 dovecot_storage_version = {{ run_dovecot_settings['dovecot_storage_version'] }}
 {% endif %}
 
 {{ render_settings(run_dovecot_settings) -}}
 
-{% if run_dovecot_passdbs | length > 0 %}
+{% if run_dovecot_passdbs | ansible.builtin.length > 0 %}
 {{ render_dbblocks(run_dovecot_passdbs, 'passdb') -}}
 {% endif -%}
-{% if run_dovecot_userdbs | length > 0 %}
+{% if run_dovecot_userdbs | ansible.builtin.length > 0 %}
 {{ render_dbblocks(run_dovecot_userdbs, 'userdb') -}}
 {% endif %}
 
-{% if run_dovecot_settings_extra_content | length > 0 -%}
+{% if run_dovecot_settings_extra_content | ansible.builtin.length > 0 -%}
 ##
 ## Raw verbatim content from `run_dovecot_settings_extra_content`:
 ##

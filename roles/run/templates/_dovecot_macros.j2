@@ -21,18 +21,18 @@
 {%-   set ns = namespace(out='') -%}
 {%-   set prefix = '  ' * indent_level -%}
 {%-   for key, value in settings.items() if key not in ['dovecot_config_version', 'dovecot_storage_version'] -%}
-{%-     if value is mapping -%}
+{%-     if value is ansible.builtin.mapping -%}
 {%-       set ns.out = ns.out ~ prefix ~ key ~ ' {\n' -%}
 {%-       set ns.out = ns.out ~ render_settings(value, indent_level + 1) -%}
 {%-       set ns.out = ns.out ~ prefix ~ '}\n' -%}
-{%-     elif (value is iterable) and (value is not string) -%}
-{%-       set ns.out = ns.out ~ prefix ~ key ~ ' = ' ~ (value | map('string') | join(' ')) ~ '\n' -%}
-{%-     elif value is boolean -%}
+{%-     elif (value is ansible.builtin.iterable) and (value is not ansible.builtin.string) -%}
+{%-       set ns.out = ns.out ~ prefix ~ key ~ ' = ' ~ (value | ansible.builtin.map('ansible.builtin.string') | ansible.builtin.join(' ')) ~ '\n' -%}
+{%-     elif value is ansible.builtin.boolean -%}
 {%-       set ns.out = ns.out ~ prefix ~ key ~ ' = ' ~ ('yes' if value else 'no') ~ '\n' -%}
-{%-     elif value is none -%}
+{%-     elif value is ansible.builtin.none -%}
 {%-       set ns.out = ns.out ~ prefix ~ key ~ ' =\n' -%}
 {%-     else -%}
-{%-       set ns.out = ns.out ~ prefix ~ key ~ ' = ' ~ (value | string) ~ '\n' -%}
+{%-       set ns.out = ns.out ~ prefix ~ key ~ ' = ' ~ (value | ansible.builtin.string) ~ '\n' -%}
 {%-     endif -%}
 {%-   endfor -%}
 {{- ns.out -}}
@@ -55,16 +55,16 @@
 {%-     set label = block['name'] | ansible.builtin.default(block['driver'] | ansible.builtin.default('', true), true) -%}
 {%-     set ns.out = ns.out ~ block_name ~ ' ' ~ label ~ ' {\n' -%}
 {%-     for key, value in block.items() if key != 'name' -%}
-{%-       if value is mapping -%}
+{%-       if value is ansible.builtin.mapping -%}
 {%-         set ns.out = ns.out ~ '  ' ~ key ~ ' {\n' ~ render_settings(value, 2) ~ '  }\n' -%}
-{%-       elif (value is iterable) and (value is not string) -%}
-{%-         set ns.out = ns.out ~ '  ' ~ key ~ ' = ' ~ (value | map('string') | join(' ')) ~ '\n' -%}
-{%-       elif value is boolean -%}
+{%-       elif (value is ansible.builtin.iterable) and (value is not ansible.builtin.string) -%}
+{%-         set ns.out = ns.out ~ '  ' ~ key ~ ' = ' ~ (value | ansible.builtin.map('ansible.builtin.string') | ansible.builtin.join(' ')) ~ '\n' -%}
+{%-       elif value is ansible.builtin.boolean -%}
 {%-         set ns.out = ns.out ~ '  ' ~ key ~ ' = ' ~ ('yes' if value else 'no') ~ '\n' -%}
-{%-       elif value is none -%}
+{%-       elif value is ansible.builtin.none -%}
 {%-         set ns.out = ns.out ~ '  ' ~ key ~ ' =\n' -%}
 {%-       else -%}
-{%-         set ns.out = ns.out ~ '  ' ~ key ~ ' = ' ~ (value | string) ~ '\n' -%}
+{%-         set ns.out = ns.out ~ '  ' ~ key ~ ' = ' ~ (value | ansible.builtin.string) ~ '\n' -%}
 {%-       endif -%}
 {%-     endfor -%}
 {%-     set ns.out = ns.out ~ '}\n' -%}

@@ -2,11 +2,11 @@
    `run_dovecot_settings['protocols']`, normalising scalar vs. list input and
    skipping `$variable` references and empty entries. Consumed by the
    Ansible-side assertion that catches unknown protocol names. #}
-{% set raw = run_dovecot_settings['protocols'] | default([]) -%}
+{% set raw = run_dovecot_settings['protocols'] | ansible.builtin.default([]) -%}
 {% set out = [] -%}
-{% if raw is iterable and raw is not string -%}
-{%   for p in raw %}{% set _ = out.append(p | string | trim) %}{% endfor -%}
+{% if raw is ansible.builtin.iterable and raw is not ansible.builtin.string -%}
+{%   for p in raw %}{% set _ = out.append(p | ansible.builtin.string | ansible.builtin.trim) %}{% endfor -%}
 {% else -%}
-{%   for p in (raw | string | split) %}{% set _ = out.append(p | trim) %}{% endfor -%}
+{%   for p in (raw | ansible.builtin.string | ansible.builtin.split) %}{% set _ = out.append(p | ansible.builtin.trim) %}{% endfor -%}
 {% endif -%}
-{{ out | reject('match', '^\s*$') | reject('match', '^\$') | unique | sort | list }}
+{{ out | ansible.builtin.reject('ansible.builtin.match', '^\s*$') | ansible.builtin.reject('ansible.builtin.match', '^\$') | ansible.builtin.unique | ansible.builtin.sort | ansible.builtin.list }}

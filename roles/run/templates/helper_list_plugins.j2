@@ -5,20 +5,20 @@
    empty entries. Consumed by the Ansible-side assertion that catches unknown
    plugin names (see tasks/setup/install/default.yml). #}
 {% set strings = [] -%}
-{% if run_dovecot_settings['mail_plugins'] is defined -%}
+{% if run_dovecot_settings['mail_plugins'] is ansible.builtin.defined -%}
 {%   set _ = strings.append(run_dovecot_settings['mail_plugins']) -%}
 {% endif -%}
 {% for key, value in run_dovecot_settings.items() -%}
-{%   if (key is string) and (key.startswith('protocol ')) and (value is mapping) and (value['mail_plugins'] is defined) -%}
+{%   if (key is ansible.builtin.string) and (key.startswith('protocol ')) and (value is ansible.builtin.mapping) and (value['mail_plugins'] is ansible.builtin.defined) -%}
 {%     set _ = strings.append(value['mail_plugins']) -%}
 {%   endif -%}
 {% endfor -%}
 {% set out = [] -%}
 {% for s in strings -%}
-{%   if s is iterable and s is not string -%}
-{%     for p in s %}{% set _ = out.append(p | string | trim) %}{% endfor -%}
+{%   if s is ansible.builtin.iterable and s is not ansible.builtin.string -%}
+{%     for p in s %}{% set _ = out.append(p | ansible.builtin.string | ansible.builtin.trim) %}{% endfor -%}
 {%   else -%}
-{%     for p in (s | string | split) %}{% set _ = out.append(p | trim) %}{% endfor -%}
+{%     for p in (s | ansible.builtin.string | ansible.builtin.split) %}{% set _ = out.append(p | ansible.builtin.trim) %}{% endfor -%}
 {%   endif -%}
 {% endfor -%}
-{{ out | reject('match', '^\s*$') | reject('match', '^\$') | unique | sort | list }}
+{{ out | ansible.builtin.reject('ansible.builtin.match', '^\s*$') | ansible.builtin.reject('ansible.builtin.match', '^\$') | ansible.builtin.unique | ansible.builtin.sort | ansible.builtin.list }}

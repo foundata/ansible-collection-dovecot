@@ -9,6 +9,6 @@
 # block in dovecot.conf. Master users authenticate as
 # "<real-user>*<master-username>" per the Dovecot master user convention.
 
-{% for entry in (__run_dovecot_external_files_master_users_entries | default([])) -%}
+{% for entry in (__run_dovecot_external_files_master_users_entries | ansible.builtin.default([])) -%}
 {{ entry['username'] }}:{{ entry['password_hash'] }}
 {% endfor -%}

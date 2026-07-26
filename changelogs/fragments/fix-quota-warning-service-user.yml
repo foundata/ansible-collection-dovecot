@@ -1,0 +1,28 @@
+---
+
+security_fixes:
+  - >
+    ``run`` role - The rendered quota-warning script (which runs as root)
+    hardened its input handling, notably: The configured ``from``, ``subject``
+    and ``body`` values are now inserted as shell-quoted literals and printed as
+    data instead of being placed in a here-document. Dovecot's documented
+    ``${PERCENT}`` placeholder is substituted explicitly instead, and line
+    breaks in the ``From`` and ``Subject`` values are folded into spaces to
+    prevent mail header injection.
+
+bugfixes:
+  - >
+    ``mailserver_ldap_maildir.yml`` example playbook - The quota-warning
+    service now runs as root. With the previous ``user = dovecot`` (as in the
+    upstream examples) the rendered script failed silently on every quota
+    threshold crossing: its ``dovecot-lda`` call has to read the root-only
+    ``dovecot.conf`` (mode ``0600``, may contains credentials) and switch to
+    the mail user, both impossible without root. No warning mail was ever
+    delivered. The ``run_dovecot_external_files`` documentation explains the
+    requirement.
+  - >
+    ``run`` role - The rendered quota-warning script now documents the root
+    requirement in its header and fails loudly: it refuses non-root execution
+    with an actionable message (exit 77), rejects malformed arguments with
+    exit 64 and reports failed ``dovecot-lda`` deliveries to the mail log
+    instead of exiting silently.

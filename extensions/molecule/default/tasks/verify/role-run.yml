@@ -318,18 +318,25 @@
   register: __testing_quotawarning_content
 
 
-- name: "Molecule | Verify | Assert quota-warning script references the platform-specific dovecot-lda path and Subject"
+- name: "Molecule | Verify | Assert quota-warning script references the platform-specific dovecot-lda path and the configured Subject"
+  vars:
+    __testing_quotawarning_script: "{{ __testing_quotawarning_content['content'] | ansible.builtin.b64decode }}"
   ansible.builtin.assert:
     that:
-      - __run_dovecot_dovecot_lda_exec_path in (__testing_quotawarning_content['content'] | ansible.builtin.b64decode)
-      - "'Subject: Quota warning' in (__testing_quotawarning_content['content'] | ansible.builtin.b64decode)"
+      - __run_dovecot_dovecot_lda_exec_path in __testing_quotawarning_script
+      # The configured value is inserted as a shell-quoted literal and printed
+      # as data (not interpolated into the message), so both must be present.
+      - "'Quota warning (${PERCENT}% full)' in __testing_quotawarning_script"
+      - "'printf ' ~ \"'Subject: %s\" in __testing_quotawarning_script"
     fail_msg: >-
       The quota-warning script is missing the platform-specific dovecot-lda path
-      ('{{ __run_dovecot_dovecot_lda_exec_path }}') or the rendered Subject header. Content:
-      {{ __testing_quotawarning_content['content'] | ansible.builtin.b64decode }}
+      ('{{ __run_dovecot_dovecot_lda_exec_path }}'), the configured Subject value or
+      the printf emitting it as data. Content:
+      {{ __testing_quotawarning_script }}
     success_msg: >-
       The quota-warning script references the expected dovecot-lda path
-      ('{{ __run_dovecot_dovecot_lda_exec_path }}') and the rendered Subject header.
+      ('{{ __run_dovecot_dovecot_lda_exec_path }}') and carries the configured Subject
+      value as a quoted literal that is printed as data.
 
 
 - name: "Molecule | Verify | Assert quota-warning script uses the Dovecot 2.4 no-enforcement override (not the removed 2.3 syntax)"
@@ -1067,3 +1074,235 @@
       (ExecMainStartTimestamp changed from '{{ __testing_handlers_ts_before['stdout'] }}'
       to '{{ __testing_handlers_ts_restore['stdout'] }}').
     success_msg: "Two reconfigurations and one unmanaged run completed without a single service restart."
+
+
+## Functional: quota warning fires when a user crosses the threshold
+#
+# Shrink the quota to a testable size (recursive combine keeps the converge
+# warning rule and grace), reload via the role, then deliver two ~19 KiB
+# mails over dovecot-lda as the LDAP demo user. Crossing the 90% rule must
+# make Dovecot execute the rendered quota-warning script, which delivers the
+# warning mail with "-o quota_enforce=no" although the mailbox is already
+# over quota. This exercises the whole chain: warning rule -> quota-warning
+# service -> rendered script -> dovecot-lda no-enforcement delivery.
+
+- name: "Molecule | Verify | Quota warning | Save the current settings and shrink the quota"
+  ansible.builtin.set_fact:
+    __testing_quota_saved_settings: "{{ run_dovecot_settings }}"
+    run_dovecot_settings: >-
+      {{
+        run_dovecot_settings
+        | ansible.builtin.combine({'quota "User quota"': {'quota_storage_size': '30k'}}, recursive=true)
+      }}
+
+
+- name: "Molecule | Verify | Quota warning | Re-run the foundata.dovecot.run role with the shrunk quota"
+  ansible.builtin.include_role:
+    name: "foundata.dovecot.run"
+
+
+- name: "Molecule | Verify | Quota warning | Run the notified handlers (reload expected)"
+  ansible.builtin.meta: "flush_handlers"
+
+
+- name: "Molecule | Verify | Quota warning | Deliver two large mails to the LDAP demo user"
+  ansible.builtin.command:
+    argv:
+      - "{{ __run_dovecot_dovecot_lda_exec_path }}"
+      - "-d"
+      - "{{ __testing_dovecot_ldap_user }}"
+    stdin: |
+      From: molecule@example.com
+      Subject: quota filler {{ item }}
+
+      {{ 'quota-filler ' * 1500 }}
+  changed_when: true
+  loop:
+    - 1
+    - 2
+
+
+- name: "Molecule | Verify | Quota warning | Wait for the warning mail to arrive in the INBOX"
+  ansible.builtin.command:
+    argv:
+      - "{{ __run_dovecot_doveadm_exec_path }}"
+      - "search"
+      - "-u"
+      - "{{ __testing_dovecot_ldap_user }}"
+      - "mailbox"
+      - "INBOX"
+      - "subject"
+      - "Quota warning"
+  changed_when: false
+  failed_when: false
+  register: __testing_quota_warning_search
+  until:
+    - (__testing_quota_warning_search['stdout'] | ansible.builtin.trim | ansible.builtin.length) > 0
+  retries: 10
+  delay: 3
+
+
+- name: "Molecule | Verify | Quota warning | Assert the warning mail was delivered despite the full mailbox"
+  ansible.builtin.assert:
+    that:
+      - (__testing_quota_warning_search['stdout'] | ansible.builtin.trim | ansible.builtin.length) > 0
+    fail_msg: >-
+      Crossing the 90% quota threshold did not deliver a warning mail to
+      '{{ __testing_dovecot_ldap_user }}'. Either the warning rule did not execute the
+      quota-warning service, the rendered script failed, or its
+      "-o quota_enforce=no" delivery was rejected by the full mailbox.
+      doveadm search output: '{{ __testing_quota_warning_search['stdout'] | ansible.builtin.default('') }}'
+      stderr: '{{ __testing_quota_warning_search['stderr'] | ansible.builtin.default('') }}'
+    success_msg: >-
+      Crossing the quota threshold executed the quota-warning script and the
+      warning mail reached the INBOX although the mailbox is over quota.
+
+
+- name: "Molecule | Verify | Quota warning | Read the Subject of the delivered warning mail"
+  ansible.builtin.command:
+    argv:
+      - "{{ __run_dovecot_doveadm_exec_path }}"
+      - "fetch"
+      - "-u"
+      - "{{ __testing_dovecot_ldap_user }}"
+      - "hdr.subject"
+      - "mailbox"
+      - "INBOX"
+      - "subject"
+      - "Quota warning"
+  changed_when: false
+  register: __testing_quota_warning_subject
+
+
+- name: "Molecule | Verify | Quota warning | Assert the percent placeholder was substituted in the message"
+  ansible.builtin.assert:
+    that:
+      # the converge configures "Quota warning (${PERCENT}% full)" and the rule
+      # fires at 90%, so the placeholder must be gone and the value present
+      - "'Quota warning (90% full)' in __testing_quota_warning_subject['stdout']"
+      - "'PERCENT' not in __testing_quota_warning_subject['stdout']"
+    fail_msg: >-
+      The warning mail's Subject does not carry the substituted percentage:
+      '{{ __testing_quota_warning_subject['stdout'] | ansible.builtin.default('') }}'.
+      The script substitutes Dovecot's documented "${PERCENT}" placeholder itself
+      (the here-document is quoted so configuration data is never shell-expanded).
+    success_msg: "The script substituted the '${PERCENT}' placeholder with the actual fill level."
+
+
+# The script runs as root with a user name that originates from the userdb, so
+# both arguments must be rejected unless they are strictly well-formed. The
+# canary paths would be created if either value were expanded by a shell.
+- name: "Molecule | Verify | Quota warning | Call the script with hostile arguments (must be refused)"
+  ansible.builtin.command:
+    argv:
+      - "/usr/local/bin/dovecot-quota-warning.sh"
+      - "{{ item['percent'] }}"
+      - "{{ item['user'] }}"
+  changed_when: false
+  failed_when: false
+  register: __testing_quota_warning_hostile
+  loop:
+    - percent: "90\n; touch /tmp/molecule-quota-canary-percent"
+      user: "{{ __testing_dovecot_ldap_user }}"
+      label: "percent with an embedded newline and a payload"
+    - percent: "90"
+      user: "x$(touch /tmp/molecule-quota-canary-user)"
+      label: "user with a command substitution"
+    - percent: "90"
+      user: "x`touch /tmp/molecule-quota-canary-backtick`"
+      label: "user with a backtick command substitution"
+    - percent: "90"
+      user: "{{ __testing_dovecot_ldap_user }}\nSubject: injected"
+      label: "user with an embedded mail header"
+    - percent: "90"
+      user: "-o/etc/shadow"
+      label: "user looking like an option"
+    - percent: "9999999"
+      user: "{{ __testing_dovecot_ldap_user }}"
+      label: "percent out of range"
+  loop_control:
+    label: "{{ item['label'] }}"
+
+
+- name: "Molecule | Verify | Quota warning | Stat the canary paths of the hostile calls"
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: __testing_quota_warning_canaries
+  loop:
+    - "/tmp/molecule-quota-canary-percent"
+    - "/tmp/molecule-quota-canary-user"
+    - "/tmp/molecule-quota-canary-backtick"
+
+
+- name: "Molecule | Verify | Quota warning | Assert hostile arguments are refused without executing anything"
+  ansible.builtin.assert:
+    that:
+      - __testing_quota_warning_hostile['results'] | ansible.builtin.rejectattr('rc', 'equalto', 64) | ansible.builtin.list | ansible.builtin.length == 0
+      - __testing_quota_warning_canaries['results'] | ansible.builtin.selectattr('stat.exists') | ansible.builtin.list | ansible.builtin.length == 0
+    fail_msg: >-
+      The quota-warning script did not refuse every hostile argument with exit 64, or a
+      canary file was created (which means a value reached a shell). Exit codes:
+      {{ __testing_quota_warning_hostile['results']
+         | ansible.builtin.map(attribute='rc') | ansible.builtin.list }};
+      existing canaries:
+      {{ __testing_quota_warning_canaries['results']
+         | ansible.builtin.selectattr('stat.exists')
+         | ansible.builtin.map(attribute='item') | ansible.builtin.list }}.
+    success_msg: >-
+      All hostile arguments (newline payloads, command substitutions, header injection,
+      option-like and out-of-range values) are refused with exit 64 and nothing is executed.
+
+
+- name: "Molecule | Verify | Quota warning | Run the script as an unprivileged user (must refuse loudly)"
+  ansible.builtin.command:
+    argv:
+      - "su"
+      - "-s"
+      - "/bin/sh"
+      - "dovecot"
+      - "-c"
+      - "/usr/local/bin/dovecot-quota-warning.sh 90 {{ __testing_dovecot_ldap_user }}"
+  changed_when: false
+  failed_when: false
+  register: __testing_quota_warning_nonroot
+
+
+- name: "Molecule | Verify | Quota warning | Assert non-root execution is refused with an actionable message"
+  ansible.builtin.assert:
+    that:
+      - __testing_quota_warning_nonroot['rc'] == 77
+      - "'must run as root' in __testing_quota_warning_nonroot['stderr']"
+    fail_msg: >-
+      The quota-warning script did not refuse non-root execution as expected
+      (rc {{ __testing_quota_warning_nonroot['rc'] }},
+      stderr: '{{ __testing_quota_warning_nonroot['stderr'] | ansible.builtin.default('') }}').
+      A silent failure here means misconfigured setups (e.g. the upstream
+      examples' "user = dovecot") lose every warning mail without a trace.
+    success_msg: "The quota-warning script refuses non-root execution with exit 77 and an actionable message."
+
+
+- name: "Molecule | Verify | Quota warning | Remove the delivered test mails again"
+  ansible.builtin.command:
+    argv:
+      - "{{ __run_dovecot_doveadm_exec_path }}"
+      - "expunge"
+      - "-u"
+      - "{{ __testing_dovecot_ldap_user }}"
+      - "mailbox"
+      - "INBOX"
+      - "all"
+  changed_when: true
+
+
+- name: "Molecule | Verify | Quota warning | Restore the saved settings"
+  ansible.builtin.set_fact:
+    run_dovecot_settings: "{{ __testing_quota_saved_settings }}"
+
+
+- name: "Molecule | Verify | Quota warning | Re-run the foundata.dovecot.run role with the restored settings"
+  ansible.builtin.include_role:
+    name: "foundata.dovecot.run"
+
+
+- name: "Molecule | Verify | Quota warning | Run the notified handlers again (reload expected)"
+  ansible.builtin.meta: "flush_handlers"

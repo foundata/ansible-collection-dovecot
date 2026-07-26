@@ -4,6 +4,19 @@
 
 ################################################################################
 # Script for "service quota-warning {}" (Dovecot)
+#
+# The invoking service MUST run as root:
+#
+#   service quota-warning {
+#     executable = script {{ __run_dovecot_external_files_quota_warning_path }}
+#     user = root
+#     ...
+#   }
+#
+# dovecot-lda has to read the root-only Dovecot configuration (0600 as it may
+# contain credentials) and switch to the mail user afterwards. Both fail for
+# any other service user (e.g. "user = dovecot") and Dovecot silently discards
+# the warning mail.
 ################################################################################
 
 
@@ -12,54 +25,141 @@
 ################################################################################
 
 PATH='/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin'
-LANG=en_US.UTF-8
-LC_ALL="en_US.UTF-8"
+# LC_ALL=C keeps the pattern matching below byte-exact regardless of the locale
+# Dovecot happens to pass in (character ranges and classes are locale-dependent
+# otherwise) and does not depend on a locale being generated on the system. The
+# message is only passed through, byte by byte, so non-ASCII subjects and
+# bodies are unaffected.
+export LC_ALL=C
+# Restore default word splitting in case a hostile IFS was inherited.
+unset IFS
 set -u
+
+
+################################################################################
+# Preflight
+################################################################################
+
+# Fail loudly (and closed: anything but a provable EUID 0 is refused) on
+# known-broken setups, so the misconfiguration shows up in the mail log on the
+# first warning attempt instead of silently discarding every warning mail.
+euid="$(id -u 2>/dev/null || true)"
+if [ "${euid}" != "0" ]
+then
+    printf 'quota-warning: must run as root, got EUID "%s". dovecot-lda cannot read the root-only Dovecot configuration nor switch to the mail user otherwise. Declare "service quota-warning { user = root }".\n' "${euid}" 1>&2
+    exit 77 # EX_NOPERM
+fi
 
 
 ################################################################################
 # Command line arguments
 ################################################################################
 
-PERCENT=$1
-USER=$2
+# Both arguments come from Dovecot's "execute quota-warning { args = ... }".
+# They are validated against an allowlist before use: this script runs as root
+# and the user name originates from the userdb (LDAP/SQL/passwd-file), which is
+# not necessarily fully under the mail administrator's control.
+#
+# Everything below treats them as data only: they are never re-expanded by the
+# shell, never interpolated into the message (the here-document delimiter is
+# quoted) and always passed as a single quoted argument.
 
-if ! printf '%s' "${PERCENT}" | grep -E -q -e '^[[:digit:]]{1,5}$' # quota might be over 100%
+# Dovecot splits "args" on whitespace, so a user name containing whitespace
+# would arrive as several arguments and silently warn the wrong mailbox.
+if [ "$#" -ne 2 ]
 then
-    printf 'First parameter (percent) has to be an integer between 0 and 99999.\n' 1>&2
-    exit 1
+    printf 'quota-warning: expected exactly 2 arguments (percent, user), got %s. Check "execute quota-warning { args = ... }": Dovecot splits it on whitespace, so user names containing whitespace cannot be passed.\n' "$#" 1>&2
+    exit 64 # EX_USAGE
 fi
-if printf '%s' "${USER}" | grep -E -q -e '[\!#&()|;^`\{\}$"'']+'
-then
-    printf 'Invalid chars found in second parameter (user).\n' 1>&2
-    exit 1
-fi
+
+percent="$1"
+user="$2"
+
+# Digits only (a quota can be over 100%), at most 5 of them ("??????*" matches
+# six or more characters). A "case" pattern is used instead of grep on purpose:
+# grep matches line by line, so anchored patterns still accept anything
+# following an embedded newline.
+case "${percent}" in
+    '' | *[!0123456789]* | ??????*)
+        printf 'quota-warning: first argument (percent) must be an integer between 0 and 99999, got "%s".\n' "${percent}" 1>&2
+        exit 64 # EX_USAGE
+        ;;
+esac
+
+# Allowlist, not a denylist (those inevitably miss a character), covering what
+# user names and mail addresses are made of. Notably rejected: whitespace and
+# newlines (mail header and log injection), shell metacharacters, quotes and
+# path separators. A leading dash is refused as well so the value can never
+# look like an option to dovecot-lda.
+case "${user}" in
+    '' | *[!A-Za-z0-9.@_+=-]*)
+        printf 'quota-warning: second argument (user) is empty or contains unsupported characters, got "%s". Only letters, digits and ".@_+=-" are accepted.\n' "${user}" 1>&2
+        exit 64 # EX_USAGE
+        ;;
+    -*)
+        printf 'quota-warning: second argument (user) must not start with a dash, got "%s".\n' "${user}" 1>&2
+        exit 64 # EX_USAGE
+        ;;
+esac
 
 
 ################################################################################
 # Process
 ################################################################################
 
+# The configured message parts are inserted as shell-quoted literals (Ansible's
+# "quote" filter), which makes them data rather than code: the shell performs no
+# expansion on them, so a command substitution in the configuration cannot run
+# as root, and no here-document delimiter can be spoofed by a body that happens
+# to contain the delimiter on a line of its own.
+from={{ __run_dovecot_external_files_quota_warning_from | ansible.builtin.quote }}
+subject={{ __run_dovecot_external_files_quota_warning_subject | ansible.builtin.quote }}
+body={{ __run_dovecot_external_files_quota_warning_body | ansible.builtin.quote }}
+
+# Header values must stay single-line: a carriage return or line feed in them
+# would append arbitrary headers (or a message body) to the warning mail. Only
+# those two characters are folded into spaces on purpose - everything else is
+# legitimate header content ("IT <it@example.com>", "Quota warning (90% full)",
+# umlauts, ...) and mangling it would corrupt the operator's message. The body
+# may of course contain line breaks.
+from_header="$(printf '%s' "${from}" | tr '\r\n' '  ')"
+subject_header="$(printf '%s' "${subject}" | tr '\r\n' '  ')"
+if [ "${from_header}" != "${from}" ] || [ "${subject_header}" != "${subject}" ]
+then
+    printf 'quota-warning: folded line break(s) in the configured From/Subject value into spaces; mail header values must be single-line. Check run_dovecot_external_files.quota_warning_script.\n' 1>&2
+fi
+
+# Dovecot's documented "${PERCENT}" placeholder is substituted explicitly, using
+# sed, and can only ever be replaced by the digits validated above (which cannot
+# carry sed replacement syntax). The unbraced "$PERCENT" is accepted as well for
+# backwards compatibility. "[$]" is a bracket expression matching a literal "$"
+# in every sed implementation.
+#
 # -o quota_enforce=no: deliver the warning mail even if the mailbox is already
 # completely full (Dovecot 2.4 replacement for the former 2.3
 # "plugin/quota=...:noenforcing" override, which 2.4 silently ignores).
-cat << EOF | {{ __run_dovecot_dovecot_lda_exec_path }} -d "${USER}" -o quota_enforce=no
-From: {{ __run_dovecot_external_files_quota_warning_from }}
-Subject: {{ __run_dovecot_external_files_quota_warning_subject }}
+{
+    printf 'From: %s\n' "${from_header}"
+    printf 'Subject: %s\n' "${subject_header}"
+    printf '\n%s\n' "${body}"
+} \
+    | sed -e "s/[$]{PERCENT}/${percent}/g" -e "s/[$]PERCENT/${percent}/g" \
+    | {{ __run_dovecot_dovecot_lda_exec_path }} -d "${user}" -o quota_enforce=no
 
-{{ __run_dovecot_external_files_quota_warning_body }}
-EOF
-
-# dovecot-lda will exit with one of the following values:
+# dovecot-lda exits with one of the following values:
 # 0
 #     Delivery was successful. (EX_OK)
 # 64
 #     Invalid parameter given. (EX_USAGE)
 # 77
-#     -e option was used and mail was rejected. Typically this happens
-#        when user is over quota and quota_full_tempfail = no is configured.
-#        (EX_NOPERM)
+#     -e option was used and mail was rejected. Typically happens when user is
+#        over quota and quota_full_tempfail = no is configured. (EX_NOPERM)
 # 75
 #     A temporary failure. This is returned for almost all failures. See the
 #     log file (usually /var/log/mail.err) for details. (EX_TEMPFAIL)
-exit $?
+rc=$?
+if [ "${rc}" -ne 0 ]
+then
+    printf 'quota-warning: delivering the warning mail to "%s" (%s%% full) failed, dovecot-lda exited with %s (64: invalid parameter, 75: temporary failure - check the mail log, 77: rejected).\n' "${user}" "${percent}" "${rc}" 1>&2
+fi
+exit "${rc}"

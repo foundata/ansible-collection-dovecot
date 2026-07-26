@@ -801,6 +801,11 @@ The script is independent of the `service quota-warning` block itself, you
 still need to declare that service inside `run_dovecot_settings` and
 reference this `path` from its `executable` setting.
 
+Declare that service with `user: "root"`: the script invokes
+`dovecot-lda`, which has to read the root-only `dovecot.conf` (mode
+`0600`, may contain credentials) and switch to the mail user - both fail
+under any non-root service user, silently swallowing the warning mails.
+
 `enabled: false` removes the file if present (note: it does NOT remove
 the corresponding `service quota-warning` block from
 `run_dovecot_settings` — manage that explicitly there).
@@ -837,6 +842,13 @@ be referenced from
 
 `From:` header used in the warning mail the script sends.
 
+Like `subject` and `body`, the value is inserted into the
+script as a quoted literal and NOT interpreted by a shell:
+`${PERCENT}` is the only placeholder substituted at runtime,
+command substitutions such as `$(...)` end up in the mail as
+literal text. Line breaks for `from` and `subject` are not
+allowed because mail header values must be single-line.
+
 - **Type**: `str`
 - **Required**: No
 
@@ -845,8 +857,8 @@ be referenced from
 [*⇑ Back to ToC ⇑*](#toc)
 
 `Subject:` header used in the warning mail. Dovecot's
-`${PERCENT}` placeholder is expanded by the script at
-runtime.
+`${PERCENT}` placeholder is substituted by the script at
+runtime (see `from` for the escaping rules).
 
 - **Type**: `str`
 - **Required**: No
@@ -856,8 +868,9 @@ runtime.
 [*⇑ Back to ToC ⇑*](#toc)
 
 Message body of the warning mail. Multi-line strings are
-written verbatim; `${PERCENT}` placeholders are expanded
-by the script at runtime.
+written verbatim; `${PERCENT}` placeholders are substituted
+by the script at runtime (see `from` for the escaping
+rules).
 
 - **Type**: `str`
 - **Required**: No

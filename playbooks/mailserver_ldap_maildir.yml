@@ -709,12 +709,17 @@
             "inet_listener sieve":
               port: "{{ dovecot_playbook_managesieve_port }}"
 
-          # Quota warning: invoked by the quota "warning" rules below to mail the user
-          # when they cross a threshold. Script is rendered by the role
+          # Quota warning: invoked by the quota "warning" rules below to mail the
+          # user when they cross a threshold. Script is rendered by the role
           # (run_dovecot_external_files.quota_warning_script).
           "service quota-warning":
             executable: "script {{ dovecot_playbook_quota_warning_script_path }}"
-            user: "dovecot"
+            # root on purpose: dovecot-lda has to read the root-only Dovecot
+            # configuration (0600 as it may contain credentials) and switch to
+            # the mail user afterwards. Both fail for any other service user
+            # (e.g. "user = dovecot") and Dovecot silently discards the warning
+            # mail.
+            user: "root"
             "unix_listener quota-warning":
               mode: "0660"
               group: "vmail"

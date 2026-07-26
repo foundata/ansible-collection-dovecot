@@ -207,7 +207,12 @@
         # quota "warning" rule below.
         "service quota-warning":
           executable: "script /usr/local/bin/dovecot-quota-warning.sh"
-          user: "dovecot"
+          # root on purpose: dovecot-lda has to read the root-only Dovecot
+          # configuration (0600 as it may contain credentials) and switch to
+          # the mail user afterwards. Both fail for any other service user
+          # (e.g. "user = dovecot") and Dovecot silently discards the warning
+          # mail.
+          user: "root"
           "unix_listener quota-warning":
             mode: "0660"
             group: "vmail"

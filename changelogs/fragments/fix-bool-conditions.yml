@@ -1,0 +1,9 @@
+---
+
+bugfixes:
+  - >
+    ``run`` role - Mail storage user, group and directory management is no
+    longer silently skipped when ``run_dovecot_mail_user_manage`` is given as
+    a string (e.g. ``"true"`` via ``--extra-vars`` or an INI inventory). The
+    conditions now use the ``bool`` filter instead of the strict ``is true``
+    identity test, which only accepts native booleans.

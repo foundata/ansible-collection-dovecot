@@ -111,7 +111,7 @@
     system: true
     state: "present"
   when:
-    - run_dovecot_mail_user_manage is ansible.builtin.true
+    - run_dovecot_mail_user_manage | ansible.builtin.bool
 
 
 - name: "Setup | Install | Default | Manage mail storage POSIX user (vmail)"
@@ -127,7 +127,7 @@
     system: true
     state: "present"
   when:
-    - run_dovecot_mail_user_manage is ansible.builtin.true
+    - run_dovecot_mail_user_manage | ansible.builtin.bool
 
 
 - name: "Setup | Install | Default | Manage mail storage directory"
@@ -138,7 +138,7 @@
     group: "{{ run_dovecot_mail_group_name }}"
     mode: "u=rwx,g=rwx,o=" # 0770
   when:
-    - run_dovecot_mail_user_manage is ansible.builtin.true
+    - run_dovecot_mail_user_manage | ansible.builtin.bool
 
 
 - name: "Setup | Install | Default | Drop tombstone marker into the (now-dormant) conf.d directory"

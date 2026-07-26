@@ -49,7 +49,7 @@
     remove: false # never delete the mail spool home directory
     force: false
   when:
-    - run_dovecot_mail_user_manage is ansible.builtin.true
+    - run_dovecot_mail_user_manage | ansible.builtin.bool
 
 
 - name: "Setup | Uninstall | Default | Remove mail storage POSIX group (vmail)"
@@ -57,4 +57,4 @@
     name: "{{ run_dovecot_mail_group_name }}"
     state: "absent"
   when:
-    - run_dovecot_mail_user_manage is ansible.builtin.true
+    - run_dovecot_mail_user_manage | ansible.builtin.bool

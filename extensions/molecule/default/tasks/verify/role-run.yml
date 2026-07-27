@@ -1309,3 +1309,110 @@
 
 - name: "Molecule | Verify | Quota warning | Run the notified handlers again (reload expected)"
   ansible.builtin.meta: "flush_handlers"
+
+
+## External files: path rename reconciliation
+#
+# The master users passwd-file and quota-warning script paths are freely
+# configurable; a renamed path cannot be derived from the current variables.
+# The role records the created paths in /etc/dovecot/.ansible-external-files
+# and must remove the file at the previous path when the path changes
+# (a forgotten master users file would keep password hashes around).
+
+- name: "Molecule | Verify | External rename | Save the converge external files configuration"
+  ansible.builtin.set_fact:
+    __testing_extfiles_saved: "{{ run_dovecot_external_files }}"
+
+
+- name: "Molecule | Verify | External rename | Configure renamed external file paths"
+  ansible.builtin.set_fact:
+    run_dovecot_external_files: >-
+      {{
+        __testing_extfiles_saved
+        | ansible.builtin.combine({
+            'master_users': {'path': '/etc/dovecot/passwd.masterusers.molecule-renamed'},
+            'quota_warning_script': {'path': '/usr/local/bin/dovecot-quota-warning-renamed.sh'}
+          }, recursive=true)
+      }}
+
+
+- name: "Molecule | Verify | External rename | Re-run the foundata.dovecot.run role with the renamed paths"
+  ansible.builtin.include_role:
+    name: "foundata.dovecot.run"
+
+
+- name: "Molecule | Verify | External rename | Run the notified handlers"
+  ansible.builtin.meta: "flush_handlers"
+
+
+- name: "Molecule | Verify | External rename | Check the file states after the rename"
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: __testing_extfiles_renamed_stat
+  loop:
+    - "/etc/dovecot/passwd.masterusers"
+    - "/usr/local/bin/dovecot-quota-warning.sh"
+    - "/etc/dovecot/passwd.masterusers.molecule-renamed"
+    - "/usr/local/bin/dovecot-quota-warning-renamed.sh"
+
+
+- name: "Molecule | Verify | External rename | Read the external files manifest"
+  ansible.builtin.slurp:
+    src: "/etc/dovecot/.ansible-external-files"
+  register: __testing_extfiles_manifest_slurp
+
+
+- name: "Molecule | Verify | External rename | Assert the previous paths were removed and recorded ones match"
+  ansible.builtin.assert:
+    that:
+      # old paths gone (this is the reconciliation under test)
+      - not __testing_extfiles_renamed_stat['results'][0]['stat']['exists']
+      - not __testing_extfiles_renamed_stat['results'][1]['stat']['exists']
+      # renamed paths exist
+      - __testing_extfiles_renamed_stat['results'][2]['stat']['exists']
+      - __testing_extfiles_renamed_stat['results'][3]['stat']['exists']
+      # manifest records exactly the renamed paths
+      - >-
+        (__testing_extfiles_manifest_slurp['content'] | ansible.builtin.b64decode
+         | ansible.builtin.regex_replace('(?m)^#.*\n', '') | ansible.builtin.from_yaml)['files']
+        == ['/etc/dovecot/passwd.masterusers.molecule-renamed', '/usr/local/bin/dovecot-quota-warning-renamed.sh']
+    fail_msg: >-
+      Renamed external file paths were not reconciled: the file at the previous
+      path (or a stale manifest entry) survived the path change.
+    success_msg: "Files at previous paths were removed and the manifest matches."
+
+
+- name: "Molecule | Verify | External rename | Restore the converge external files configuration"
+  ansible.builtin.set_fact:
+    run_dovecot_external_files: "{{ __testing_extfiles_saved }}"
+
+
+- name: "Molecule | Verify | External rename | Re-run the foundata.dovecot.run role with the restored paths"
+  ansible.builtin.include_role:
+    name: "foundata.dovecot.run"
+
+
+- name: "Molecule | Verify | External rename | Run the notified handlers again"
+  ansible.builtin.meta: "flush_handlers"
+
+
+- name: "Molecule | Verify | External rename | Check the file states after the restore"
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: __testing_extfiles_restored_stat
+  loop:
+    - "/etc/dovecot/passwd.masterusers"
+    - "/usr/local/bin/dovecot-quota-warning.sh"
+    - "/etc/dovecot/passwd.masterusers.molecule-renamed"
+    - "/usr/local/bin/dovecot-quota-warning-renamed.sh"
+
+
+- name: "Molecule | Verify | External rename | Assert the converge state is back"
+  ansible.builtin.assert:
+    that:
+      - __testing_extfiles_restored_stat['results'][0]['stat']['exists']
+      - __testing_extfiles_restored_stat['results'][1]['stat']['exists']
+      - not __testing_extfiles_restored_stat['results'][2]['stat']['exists']
+      - not __testing_extfiles_restored_stat['results'][3]['stat']['exists']
+    fail_msg: "Restoring the converge paths did not reconcile the renamed files back."
+    success_msg: "The converge external file state is back in place."

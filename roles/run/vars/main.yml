@@ -218,6 +218,33 @@ __run_dovecot_dovecot_lda_exec_path: "/usr/libexec/dovecot/dovecot-lda"
 __run_dovecot_auth_group: "dovecot"
 
 
+# Manifest recording the external files created by this role at their
+# configured paths (master users passwd-file, quota-warning script). The paths
+# are freely configurable, so a renamed path cannot be derived from the
+# current variables; this file is the ownership record that lets the previous
+# file be removed after a path change and lets uninstall clean up historical
+# paths (the master users passwd-file contains password hashes and must not
+# linger at a forgotten path).
+__run_dovecot_external_files_manifest_path: "/etc/dovecot/.ansible-external-files"
+
+
+# Paths of the external files the role currently manages (defined and enabled
+# entries only); used by the manifest reconciliation and the uninstall tasks.
+__run_dovecot_external_files_owned: >-
+  {%- set __paths = [] -%}
+  {%- if (run_dovecot_external_files['master_users'] is ansible.builtin.defined)
+         and (run_dovecot_external_files['master_users']['enabled'] | ansible.builtin.default(true)) -%}
+  {%-   set _ = __paths.append(run_dovecot_external_files['master_users']['path']
+                               | ansible.builtin.default(__run_dovecot_external_files_master_users_path_default, true)) -%}
+  {%- endif -%}
+  {%- if (run_dovecot_external_files['quota_warning_script'] is ansible.builtin.defined)
+         and (run_dovecot_external_files['quota_warning_script']['enabled'] | ansible.builtin.default(true)) -%}
+  {%-   set _ = __paths.append(run_dovecot_external_files['quota_warning_script']['path']
+                               | ansible.builtin.default(__run_dovecot_external_files_quota_warning_path_default, true)) -%}
+  {%- endif -%}
+  {{ __paths }}
+
+
 # Default values for the optional external files (run_dovecot_external_files.*).
 # These are the fallbacks applied when a key is omitted from an entry. They live
 # here, not inline in tasks/config/default.yml, so every role default has a

@@ -6,7 +6,12 @@
 
 ---
 
+# Plain file removal instead of deb822_repository: the module needs the
+# python3-debian library even for state "absent", which is only installed
+# when the repository feature was actually used, so uninstall would fail on
+# every other Debian-family host. The install side writes everything
+# (including the embedded signing key) into this single file.
 - name: "Setup | Uninstall | Debian | Remove the Dovecot CE upstream apt source"
-  ansible.builtin.deb822_repository:
-    name: "dovecot-ce"
+  ansible.builtin.file:
+    path: "/etc/apt/sources.list.d/dovecot-ce.sources"
     state: "absent"

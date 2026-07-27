@@ -19,15 +19,30 @@
     - (__run_dovecot_packages_uninstall | ansible.builtin.length) > 0
 
 
-# External files are removed at their currently configured path (the
-# run_dovecot_external_files value at uninstall time) plus the default paths,
-# which covers callers that already dropped the variable. A custom path that
-# is no longer configured cannot be derived and stays behind.
+# External files are removed at the union of the manifest-recorded paths (the
+# files this role actually created, covering paths that were renamed since),
+# the currently configured paths and the default paths (covering callers that
+# already dropped the variable or removed the manifest by hand).
+- name: "Setup | Uninstall | Default | Read the manifest of previously created external files"
+  ansible.builtin.slurp:
+    src: "{{ __run_dovecot_external_files_manifest_path }}"
+  register: __run_dovecot_external_manifest_slurp
+  failed_when:
+    - __run_dovecot_external_manifest_slurp['msg'] is ansible.builtin.defined
+    - "'file not found' not in (__run_dovecot_external_manifest_slurp['msg'] | ansible.builtin.lower)"
+
+
 - name: "Setup | Uninstall | Default | Remove role-managed configuration and external files"
   ansible.builtin.file:
     path: "{{ item }}"
     state: "absent"
   vars:
+    __run_dovecot_uninstall_manifest_paths: >-
+      {{
+        (((__run_dovecot_external_manifest_slurp['content'] | ansible.builtin.default('')
+           | ansible.builtin.b64decode | ansible.builtin.from_yaml)
+          | ansible.builtin.default({}, true))['files'] | ansible.builtin.default([]))
+      }}
     __run_dovecot_uninstall_master_users_path: >-
       {{ (run_dovecot_external_files['master_users'] | ansible.builtin.default({}, true))['path']
          | ansible.builtin.default(__run_dovecot_external_files_master_users_path_default, true) }}
@@ -36,14 +51,15 @@
          | ansible.builtin.default(__run_dovecot_external_files_quota_warning_path_default, true) }}
   loop: >-
     {{
-      [
+      ([
         __run_dovecot_dovecotconf_file_path,
         __run_dovecot_confd_tombstone_file_path,
         __run_dovecot_uninstall_master_users_path,
         __run_dovecot_uninstall_quota_warning_path,
         __run_dovecot_external_files_master_users_path_default,
-        __run_dovecot_external_files_quota_warning_path_default
-      ] | ansible.builtin.unique
+        __run_dovecot_external_files_quota_warning_path_default,
+        __run_dovecot_external_files_manifest_path
+      ] + __run_dovecot_uninstall_manifest_paths) | ansible.builtin.unique
     }}
 
 

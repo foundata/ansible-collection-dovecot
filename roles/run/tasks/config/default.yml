@@ -18,6 +18,33 @@
     - "run_dovecot: reload dovecot.service"
 
 
+### External files: ownership manifest of previously created files
+
+# The external file paths are freely configurable, so a renamed path cannot
+# be derived from the current variables. The manifest records the paths this
+# role created: files recorded there but no longer configured (renamed,
+# de-listed or disabled entries) get removed again below, and uninstall uses
+# the same record for complete cleanup.
+- name: "Config | Default | External files | Read the manifest of previously created files"
+  ansible.builtin.slurp:
+    src: "{{ __run_dovecot_external_files_manifest_path }}"
+  register: __run_dovecot_external_manifest_slurp
+  failed_when:
+    # tolerate a missing manifest (first run; treated as empty below)
+    - __run_dovecot_external_manifest_slurp['msg'] is ansible.builtin.defined
+    - "'file not found' not in (__run_dovecot_external_manifest_slurp['msg'] | ansible.builtin.lower)"
+
+
+- name: "Config | Default | External files | Determine the previously created files"
+  ansible.builtin.set_fact:
+    __run_dovecot_external_manifest_old: >-
+      {{
+        (((__run_dovecot_external_manifest_slurp['content'] | ansible.builtin.default('')
+           | ansible.builtin.b64decode | ansible.builtin.from_yaml)
+          | ansible.builtin.default({}, true))['files'] | ansible.builtin.default([]))
+      }}
+
+
 ### External files: Master users passwd-file
 
 - name: "Config | Default | External files | Master users"
@@ -96,6 +123,45 @@
         state: "absent"
       when:
         - not (__run_dovecot_external_files_quota_warning_enabled | ansible.builtin.bool)
+
+
+### External files: reconcile the manifest
+
+- name: "Config | Default | External files | Remove files at paths no longer configured"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: "absent"
+  loop: >-
+    {{
+      __run_dovecot_external_manifest_old
+      | ansible.builtin.reject('ansible.builtin.in', __run_dovecot_external_files_owned)
+      | ansible.builtin.list
+    }}
+  notify:
+    - "run_dovecot: reload dovecot.service"
+
+
+- name: "Config | Default | External files | Record the created files in the manifest"
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible (foundata.dovecot.run); do not edit.
+      # Paths of the external files created by this role; used to clean up
+      # the previous file after a path change and on uninstall.
+      {{ {'files': (__run_dovecot_external_files_owned | ansible.builtin.sort)} | ansible.builtin.to_nice_yaml(indent=2) }}
+    dest: "{{ __run_dovecot_external_files_manifest_path }}"
+    owner: "root"
+    group: "root"
+    mode: "u=rw,g=r,o=r" # 0644, contains only paths
+  when:
+    - (__run_dovecot_external_files_owned | ansible.builtin.length) > 0
+
+
+- name: "Config | Default | External files | Remove the manifest (no external files configured)"
+  ansible.builtin.file:
+    path: "{{ __run_dovecot_external_files_manifest_path }}"
+    state: "absent"
+  when:
+    - (__run_dovecot_external_files_owned | ansible.builtin.length) == 0
 
 
 - name: "Config | Default | Ensure handler runs (e.g. config validation/reload) before (re)starting Dovecot after packages were installed"

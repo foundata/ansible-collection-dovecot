@@ -1,0 +1,16 @@
+---
+
+bugfixes:
+  - >
+    ``run`` role - External files (master users passwd-file, quota-warning
+    script) at freely configurable paths are now recorded in an ownership
+    manifest (``/etc/dovecot/.ansible-external-files``): renaming a path
+    removes the file at the previous path on the next run, and uninstall
+    cleans up historical paths as well. Before, a renamed master users file
+    (containing password hashes) and an old quota-warning script survived
+    both reconfiguration and uninstall.
+  - >
+    ``run`` role - Uninstall no longer fails on Debian-family hosts where the
+    upstream repository feature was never enabled: the apt source is removed
+    as a plain file instead of via ``deb822_repository``, which requires the
+    ``python3-debian`` library even for removal.

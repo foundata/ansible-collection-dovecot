@@ -20,7 +20,7 @@
       run_dovecot_settings['protocols']. Known protocols on this platform:
       {{ __run_dovecot_packages_protocols_map.keys() | ansible.builtin.sort | ansible.builtin.list | ansible.builtin.to_json }}.
     quiet: true
-  loop: "{{ lookup('template', 'helper_list_protocols.j2') }}"
+  loop: "{{ lookup('ansible.builtin.template', 'helper_list_protocols.j2') }}"
 
 
 - name: "Setup | Install | Default | Validate declared mail_plugins against the platform's plugin-to-package map"
@@ -33,7 +33,7 @@
       plugins on this platform:
       {{ __run_dovecot_packages_plugins_map.keys() | ansible.builtin.sort | ansible.builtin.list | ansible.builtin.to_json }}.
     quiet: true
-  loop: "{{ lookup('template', 'helper_list_plugins.j2') }}"
+  loop: "{{ lookup('ansible.builtin.template', 'helper_list_plugins.j2') }}"
 
 
 - name: "Setup | Install | Default | Install or upgrade packages"
@@ -52,16 +52,16 @@
 
 - name: "Setup | Install | Default | Print additional packages (extracted from settings via protocol and plugin maps)"
   ansible.builtin.debug:
-    msg: "{{ lookup('template', 'helper_list_extra_packages.j2') }}"
+    msg: "{{ lookup('ansible.builtin.template', 'helper_list_extra_packages.j2') }}"
     verbosity: 4
 
 
 - name: "Setup | Install | Default | Install or upgrade additional packages for declared protocols and plugins"
   ansible.builtin.package:
-    name: "{{ lookup('template', 'helper_list_extra_packages.j2') }}"
+    name: "{{ lookup('ansible.builtin.template', 'helper_list_extra_packages.j2') }}"
     state: "{{ 'latest' if run_dovecot_autoupgrade else 'present' }}"
   when:
-    - (lookup('template', 'helper_list_extra_packages.j2') | ansible.builtin.length) > 0
+    - (lookup('ansible.builtin.template', 'helper_list_extra_packages.j2') | ansible.builtin.length) > 0
   register: __run_dovecot_package_install_extras_result # to decide if a handler flush (config/default.yml) is necessary
   notify:
     # new or upgraded binaries only take effect with a full restart (a restart

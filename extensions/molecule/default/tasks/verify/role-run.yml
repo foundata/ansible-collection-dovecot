@@ -10,9 +10,9 @@
     "{{ item['key'] }}": "{{ item['value'] }}"
   loop: >-
     {{
-      (__testing_state | default({}, true))
+      (__testing_state | ansible.builtin.default({}, true))
       | ansible.builtin.dict2items
-      | ansible.builtin.selectattr('key', 'match', '^(run_dovecot_|__testing_)')
+      | ansible.builtin.selectattr('key', 'ansible.builtin.match', '^(run_dovecot_|__testing_)')
       | ansible.builtin.list
     }}
 
@@ -100,7 +100,7 @@
 - name: "Molecule | Verify | Assert the managed mail group has the expected GID"
   ansible.builtin.assert:
     that:
-      - ansible_facts['getent_group'][run_dovecot_mail_group_name][1] | int == run_dovecot_mail_group_gid | int
+      - ansible_facts['getent_group'][run_dovecot_mail_group_name][1] | ansible.builtin.int == run_dovecot_mail_group_gid | ansible.builtin.int
     fail_msg: >-
       Mail group '{{ run_dovecot_mail_group_name }}' GID is
       '{{ ansible_facts['getent_group'][run_dovecot_mail_group_name][1] }}', expected
@@ -117,7 +117,7 @@
 - name: "Molecule | Verify | Assert the managed mail user has the expected UID and home"
   ansible.builtin.assert:
     that:
-      - ansible_facts['getent_passwd'][run_dovecot_mail_user_name][1] | int == run_dovecot_mail_user_uid | int
+      - ansible_facts['getent_passwd'][run_dovecot_mail_user_name][1] | ansible.builtin.int == run_dovecot_mail_user_uid | ansible.builtin.int
       - ansible_facts['getent_passwd'][run_dovecot_mail_user_name][4] == run_dovecot_mail_storage_path
     fail_msg: >-
       Mail user '{{ run_dovecot_mail_user_name }}' has unexpected UID or home:
@@ -863,7 +863,7 @@
           {{
             run_dovecot_settings
             | ansible.builtin.dict2items
-            | ansible.builtin.rejectattr('key', 'in', ['dovecot_config_version', 'dovecot_storage_version'])
+            | ansible.builtin.rejectattr('key', 'ansible.builtin.in', ['dovecot_config_version', 'dovecot_storage_version'])
             | ansible.builtin.items2dict
           }}
 
@@ -1237,7 +1237,10 @@
 - name: "Molecule | Verify | Quota warning | Assert hostile arguments are refused without executing anything"
   ansible.builtin.assert:
     that:
-      - __testing_quota_warning_hostile['results'] | ansible.builtin.rejectattr('rc', 'equalto', 64) | ansible.builtin.list | ansible.builtin.length == 0
+      - >-
+        __testing_quota_warning_hostile['results']
+        | ansible.builtin.rejectattr('rc', 'ansible.builtin.equalto', 64)
+        | ansible.builtin.list | ansible.builtin.length == 0
       - __testing_quota_warning_canaries['results'] | ansible.builtin.selectattr('stat.exists') | ansible.builtin.list | ansible.builtin.length == 0
     fail_msg: >-
       The quota-warning script did not refuse every hostile argument with exit 64, or a

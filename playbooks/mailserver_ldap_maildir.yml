@@ -32,7 +32,7 @@
 ---
 
 - name: "Configure Dovecot (IMAP/LMTP/ManageSieve, LDAP/AD auth)"
-  hosts: "{{ dovecot_playbook_hosts | default('mailservers') }}"
+  hosts: "{{ dovecot_playbook_hosts | ansible.builtin.default('mailservers') }}"
   become: true
   pre_tasks:
 
@@ -60,7 +60,7 @@
     - name: "Require deployment parameters that have no sensible default (set them; use Vault for the secret)"
       ansible.builtin.assert:
         that:
-          - "(lookup('ansible.builtin.vars', item, default='') | string | length) > 0"
+          - "(lookup('ansible.builtin.vars', item, default='') | ansible.builtin.string | ansible.builtin.length) > 0"
         quiet: true
         fail_msg: >-
           Required variable '{{ item }}' is not set. This playbook ships no default
@@ -84,39 +84,45 @@
     - name: "Resolve deployment parameters that have a sensible default (override via inventory/group_vars/-e)"
       ansible.builtin.set_fact:
         # Mail storage root + the shared "vmail" owner's numeric UID/GID.
-        dovecot_playbook_mail_storage_path: "{{ dovecot_playbook_mail_storage_path | default('/srv/vmail') }}"
-        dovecot_playbook_vmail_uid: "{{ dovecot_playbook_vmail_uid | default(10000) }}"
-        dovecot_playbook_vmail_gid: "{{ dovecot_playbook_vmail_gid | default(10000) }}"
+        dovecot_playbook_mail_storage_path: "{{ dovecot_playbook_mail_storage_path | ansible.builtin.default('/srv/vmail') }}"
+        dovecot_playbook_vmail_uid: "{{ dovecot_playbook_vmail_uid | ansible.builtin.default(10000) }}"
+        dovecot_playbook_vmail_gid: "{{ dovecot_playbook_vmail_gid | ansible.builtin.default(10000) }}"
         # Per-user quota: total size + the fill-level percentages that trigger a
         # warning mail (exactly four distinct entries, highest first).
-        dovecot_playbook_quota_storage_size: "{{ dovecot_playbook_quota_storage_size | default('25G') }}"
-        dovecot_playbook_quota_warn_percentages: "{{ dovecot_playbook_quota_warn_percentages | default([99, 95, 90, 80]) }}"
+        dovecot_playbook_quota_storage_size: "{{ dovecot_playbook_quota_storage_size | ansible.builtin.default('25G') }}"
+        dovecot_playbook_quota_warn_percentages: "{{ dovecot_playbook_quota_warn_percentages | ansible.builtin.default([99, 95, 90, 80]) }}"
         # From address of the quota-warning mails (defaults to it@<mail domain>).
         dovecot_playbook_quota_warning_from: >-
           {{ dovecot_playbook_quota_warning_from
-             | default('IT <it@' ~ dovecot_playbook_mail_domain ~ '>') }}
+             | ansible.builtin.default('IT <it@' ~ dovecot_playbook_mail_domain ~ '>') }}
         # Quota tuning + the user-facing quota messages.
-        dovecot_playbook_quota_storage_grace: "{{ dovecot_playbook_quota_storage_grace | default('150M') }}"
-        dovecot_playbook_quota_mail_size: "{{ dovecot_playbook_quota_mail_size | default('100M') }}"
-        dovecot_playbook_quota_exceeded_message: "{{ dovecot_playbook_quota_exceeded_message | default('Mailbox is over quota / Postfach ist voll') }}"
-        dovecot_playbook_quota_status_overquota: "{{ dovecot_playbook_quota_status_overquota | default('552 5.2.2 Mailbox is over quota') }}"
+        dovecot_playbook_quota_storage_grace: "{{ dovecot_playbook_quota_storage_grace | ansible.builtin.default('150M') }}"
+        dovecot_playbook_quota_mail_size: "{{ dovecot_playbook_quota_mail_size | ansible.builtin.default('100M') }}"
+        dovecot_playbook_quota_exceeded_message: >-
+          {{ dovecot_playbook_quota_exceeded_message
+             | ansible.builtin.default('Mailbox is over quota / Postfach ist voll') }}
+        dovecot_playbook_quota_status_overquota: "{{ dovecot_playbook_quota_status_overquota | ansible.builtin.default('552 5.2.2 Mailbox is over quota') }}"
         # Quota-warning script path: referenced by BOTH the service executable and
         # the rendered script's file path, so one knob keeps them in sync. Plus the
         # warning mail subject.
-        dovecot_playbook_quota_warning_script_path: "{{ dovecot_playbook_quota_warning_script_path | default('/usr/local/bin/dovecot-quota-warning.sh') }}"
-        dovecot_playbook_quota_warning_subject: "{{ dovecot_playbook_quota_warning_subject | default('Quota warning (mailbox ${PERCENT}% full)') }}"
+        dovecot_playbook_quota_warning_script_path: >-
+          {{ dovecot_playbook_quota_warning_script_path
+             | ansible.builtin.default('/usr/local/bin/dovecot-quota-warning.sh') }}
+        dovecot_playbook_quota_warning_subject: >-
+          {{ dovecot_playbook_quota_warning_subject
+             | ansible.builtin.default('Quota warning (mailbox ${PERCENT}% full)') }}
         # TLS policy.
-        dovecot_playbook_ssl_min_protocol: "{{ dovecot_playbook_ssl_min_protocol | default('TLSv1.2') }}"
-        dovecot_playbook_ssl_prefer_ciphers: "{{ dovecot_playbook_ssl_prefer_ciphers | default('client') }}"
+        dovecot_playbook_ssl_min_protocol: "{{ dovecot_playbook_ssl_min_protocol | ansible.builtin.default('TLSv1.2') }}"
+        dovecot_playbook_ssl_prefer_ciphers: "{{ dovecot_playbook_ssl_prefer_ciphers | ansible.builtin.default('client') }}"
         # Listener ports (standard defaults; rarely changed).
-        dovecot_playbook_imap_port: "{{ dovecot_playbook_imap_port | default(143) }}"
-        dovecot_playbook_imaps_port: "{{ dovecot_playbook_imaps_port | default(993) }}"
-        dovecot_playbook_managesieve_port: "{{ dovecot_playbook_managesieve_port | default(4190) }}"
+        dovecot_playbook_imap_port: "{{ dovecot_playbook_imap_port | ansible.builtin.default(143) }}"
+        dovecot_playbook_imaps_port: "{{ dovecot_playbook_imaps_port | ansible.builtin.default(993) }}"
+        dovecot_playbook_managesieve_port: "{{ dovecot_playbook_managesieve_port | ansible.builtin.default(4190) }}"
         # Postfix-facing sockets: spool dir + owner (used to build the service
         # blocks in the next task, since the path lives in a non-templatable key).
-        dovecot_playbook_postfix_private_dir: "{{ dovecot_playbook_postfix_private_dir | default('/var/spool/postfix/private') }}"
-        dovecot_playbook_postfix_user: "{{ dovecot_playbook_postfix_user | default('postfix') }}"
-        dovecot_playbook_postfix_group: "{{ dovecot_playbook_postfix_group | default('postfix') }}"
+        dovecot_playbook_postfix_private_dir: "{{ dovecot_playbook_postfix_private_dir | ansible.builtin.default('/var/spool/postfix/private') }}"
+        dovecot_playbook_postfix_user: "{{ dovecot_playbook_postfix_user | ansible.builtin.default('postfix') }}"
+        dovecot_playbook_postfix_group: "{{ dovecot_playbook_postfix_group | ansible.builtin.default('postfix') }}"
         # LDAP search filters. The defaults reproduce the shipped login/lookup
         # policy; override them to match your directory schema. The passdb (login)
         # filter is deliberately STRICTER than the userdb (lookup) filter: only the
@@ -129,12 +135,12 @@
         # inject the group DN; each folded result is one space-free LDAP filter (as a
         # filter with whitespace is invalid).
         dovecot_playbook_ldap_passdb_filter: >-
-          {{ dovecot_playbook_ldap_passdb_filter | default(
+          {{ dovecot_playbook_ldap_passdb_filter | ansible.builtin.default(
                '(&(objectClass=user)(objectCategory=person)(mail=%{user})'
                ~ '(!(userAccountControl:1.2.840.113556.1.4.803:=2))'
                ~ '(memberOf:1.2.840.113556.1.4.1941:=' ~ dovecot_playbook_ldap_group_dn ~ '))', true) }}
         dovecot_playbook_ldap_userdb_filter: >-
-          {{ dovecot_playbook_ldap_userdb_filter | default(
+          {{ dovecot_playbook_ldap_userdb_filter | ansible.builtin.default(
                '(&(objectClass=user)(objectCategory=person)'
                ~ '(|(sAMAccountName=%{user})(mail=%{user})(proxyAddresses=smtp:%{user})(proxyAddresses=SMTP:%{user}))'
                ~ '(!(userAccountControl:1.2.840.113556.1.4.803:=2)))', true) }}

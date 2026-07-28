@@ -1418,6 +1418,55 @@
     success_msg: "The converge external file state is back in place."
 
 
+## Secret redaction in argument validation (canary)
+#
+# run_dovecot_passdbs and the master-user password_hash carry credentials and
+# are marked no_log in the argument spec. A failing argument validation is the
+# one output path the rendering protections (diff: false) do not cover, so
+# this feeds canary secrets together with an invalid argument and asserts the
+# validation failure result censors them.
+
+- name: "Molecule | Verify | Redaction: run the role with canary secrets and an invalid argument (must fail)"
+  block:
+
+    - name: "Molecule | Verify | Redaction: include the role with the canary arguments"
+      ansible.builtin.include_role:
+        name: "foundata.dovecot.run"
+      vars:
+        run_dovecot_state: "definitely-invalid"
+        run_dovecot_passdbs:
+          - driver: "static"
+            password: "{PLAIN}canary-passdb-secret-3d1f"
+        run_dovecot_external_files:
+          master_users:
+            enabled: true
+            entries:
+              - username: "admin"
+                password_hash: "{PLAIN}canary-hash-secret-9c4a"
+
+    - name: "Molecule | Verify | Redaction: fail because the invalid argument was accepted"
+      ansible.builtin.fail:
+        msg: "The argument validation accepted an invalid run_dovecot_state."
+
+  rescue:
+
+    - name: "Molecule | Verify | Redaction: check the validation failed and censored the canaries"
+      ansible.builtin.assert:
+        that:
+          # it is the argument validation that failed (the invalid choice is
+          # echoed, it is not secret-bearing)
+          - "'definitely-invalid' in (ansible_failed_result | ansible.builtin.to_json)"
+          # neither canary secret appears anywhere in the failure result
+          - "'canary-passdb-secret-3d1f' not in (ansible_failed_result | ansible.builtin.to_json)"
+          - "'canary-hash-secret-9c4a' not in (ansible_failed_result | ansible.builtin.to_json)"
+        fail_msg: >-
+          The argument validation failure leaked a canary secret (or the run
+          did not fail in the validation).
+        success_msg: >-
+          The argument validation rejects invalid input while censoring the
+          secret-bearing structures.
+
+
 ## Uninstall (state "absent") verification
 #
 # This block stays the LAST one in the verify stage: it converges the

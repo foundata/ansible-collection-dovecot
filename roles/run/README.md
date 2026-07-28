@@ -187,7 +187,7 @@ The following variables can be configured for this role:
 | `run_dovecot_mail_storage_path` | `path` | No | `"/srv/vmail"` | Absolute path to the root directory holding Dovecot's mail storage tree.<br><br>The role ensures the directory exists with ownership `run_dovecot_mail_user_name`:`run_dovecot_mail_group_name` and mode `0770`. Filesystem provisioning (partitioning, […](#variable-run_dovecot_mail_storage_path) |
 | `run_dovecot_settings` | `dict` | No | `{}` | Complete Dovecot configuration as a nested YAML dictionary that mirrors Dovecot 2.4 grammar 1:1. The role renders it into a single `/etc/dovecot/dovecot.conf` (so there are no `conf.d` includes).<br><br>Rules:<br><br>- Scalar value → `key = value`. […](#variable-run_dovecot_settings) |
 | `run_dovecot_settings_extra_content` | `str` | No | `""` | Raw verbatim Dovecot configuration appended at the end of `/etc/dovecot/dovecot.conf` (before the trailing `!include_try local.conf`).<br><br>This is an escape hatch of last resort for the rare case where the `run_dovecot_settings` dictionary cannot […](#variable-run_dovecot_settings_extra_content) |
-| `run_dovecot_passdbs` | `list` | No | `[]` | Ordered list of Dovecot `passdb { ... }` blocks (the password database lookup chain). One block is rendered per list entry, in declaration order — this is the authentication fallback chain Dovecot evaluates top-to-bottom.<br><br>A dedicated list is […](#variable-run_dovecot_passdbs) |
+| `run_dovecot_passdbs` 🔒 | `list` | No | `[]` | Ordered list of Dovecot `passdb { ... }` blocks (the password database lookup chain). One block is rendered per list entry, in declaration order — this is the authentication fallback chain Dovecot evaluates top-to-bottom.<br><br>A dedicated list is […](#variable-run_dovecot_passdbs) |
 | `run_dovecot_userdbs` | `list` | No | `[]` | Ordered list of Dovecot `userdb { ... }` blocks (the user database lookup chain). One block is rendered per list entry, in declaration order.<br><br>Same rationale, structure and rendering as `run_dovecot_passdbs` (named blocks via the reserved […](#variable-run_dovecot_userdbs) |
 | `run_dovecot_external_files` | `dict` | No | `{}` | Container for file artifacts Dovecot reads or runs that are NOT `dovecot.conf` itself. They have their own parsers or semantics (passwd-file format, executable scripts, ...). You could create these files with your own additional tasks (e.g. upfront, […](#variable-run_dovecot_external_files) |
 
@@ -608,8 +608,15 @@ run_dovecot_passdbs:
     passwd_file_path: "/etc/dovecot/passwd.masterusers"
 ```
 
+Entries commonly carry credentials (`static`'s `password`, LDAP bind
+passwords, SQL connection strings), so the complete list is marked
+`no_log`: argument validation failures and verbose task output show
+it censored. Keep the actual secrets in Ansible Vault or another
+secret source nevertheless.
+
 - **Type**: `list`
 - **Required**: No
+- **Sensitive**: Yes (`no_log`, values are masked in logs)
 - **Default**: `[]`
 - **List Elements**: `dict`
 
@@ -781,11 +788,14 @@ in curly braces, e.g. `{BLF-CRYPT}$2y$05$...`. The role
 writes the value verbatim; it does not hash or validate
 the scheme.
 
-Keep the value in Ansible Vault or another secret source
-— this field is NOT marked `no_log`.
+The field is marked `no_log`, so argument validation
+failures and verbose task output show it censored. Keep
+the value in Ansible Vault or another secret source
+nevertheless.
 
 - **Type**: `str`
 - **Required**: No
+- **Sensitive**: Yes (`no_log`, values are masked in logs)
 
 
 

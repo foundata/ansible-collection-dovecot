@@ -347,8 +347,14 @@ run_dovecot_settings_extra_content: ""
 #     passwd_file_path: "/etc/dovecot/passwd.masterusers"
 # ```
 #
+# Entries commonly carry credentials (`static`'s `password`, LDAP bind
+# passwords, SQL connection strings), so the complete list is marked `no_log`:
+# argument validation failures and verbose task output show it censored. Keep
+# the actual secrets in Ansible Vault or another secret source nevertheless.
+#
 # - Type: list
 # - Required: No
+# - Sensitive: Yes (no_log, values are masked in logs)
 # - Default: []
 # - List elements: dict
 run_dovecot_passdbs: []
@@ -479,10 +485,12 @@ run_dovecot_userdbs: []
 #             braces, e.g. `{BLF-CRYPT}$2y$05$...`. The role writes the value
 #             verbatim; it does not hash or validate the scheme.
 #
-#             Keep the value in Ansible Vault or another secret source — this
-#             field is NOT marked `no_log`.
+#             The field is marked `no_log`, so argument validation failures and
+#             verbose task output show it censored. Keep the value in Ansible
+#             Vault or another secret source nevertheless.
 #             - Type: str
 #             - Required: No
+#             - Sensitive: Yes (no_log, values are masked in logs)
 #   - quota_warning_script: Renders a shell script that Dovecot's
 #     `"service quota-warning": { executable: "script <path>" ... }` can invoke
 #     when a user crosses a configured quota threshold. The script is deployed

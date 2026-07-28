@@ -389,9 +389,16 @@ argument_specs:
               driver: "passwd-file"
               passwd_file_path: "/etc/dovecot/passwd.masterusers"
           ```
+
+          Entries commonly carry credentials (`static`'s `password`, LDAP bind
+          passwords, SQL connection strings), so the complete list is marked
+          `no_log`: argument validation failures and verbose task output show
+          it censored. Keep the actual secrets in Ansible Vault or another
+          secret source nevertheless.
         type: "list"
         elements: "dict"
         default: []
+        no_log: true
 
       run_dovecot_userdbs:
         description: |
@@ -525,9 +532,12 @@ argument_specs:
                       writes the value verbatim; it does not hash or validate
                       the scheme.
 
-                      Keep the value in Ansible Vault or another secret source
-                      — this field is NOT marked `no_log`.
+                      The field is marked `no_log`, so argument validation
+                      failures and verbose task output show it censored. Keep
+                      the value in Ansible Vault or another secret source
+                      nevertheless.
                     type: "str"
+                    no_log: true
 
           quota_warning_script:
             description: |

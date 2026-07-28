@@ -1416,3 +1416,86 @@
       - not __testing_extfiles_restored_stat['results'][3]['stat']['exists']
     fail_msg: "Restoring the converge paths did not reconcile the renamed files back."
     success_msg: "The converge external file state is back in place."
+
+
+## Uninstall (state "absent") verification
+#
+# This block stays the LAST one in the verify stage: it converges the
+# instances away from the state every earlier check relies on. It is
+# deliberately not part of the cleanup stage - cleanup also runs when an
+# earlier stage fails (on arbitrary state) and has to stay assertion-free.
+
+# The external-files manifest also covers historical paths (files renamed or
+# de-listed since deployment); the rename/reconcile checks above already
+# proved that mechanism, so a plain uninstall over the converge state
+# suffices here.
+- name: "Molecule | Verify | Uninstall: seed a mail so the storage-retention check is meaningful"
+  ansible.builtin.copy:
+    dest: "/srv/vmail/KEEP-ME-user-data"
+    content: |
+      user data the uninstall must never touch
+    owner: "root"
+    group: "root"
+    mode: "u=rw,g=,o="
+
+
+- name: "Molecule | Verify | Uninstall: run the role with state 'absent'"
+  ansible.builtin.include_role:
+    name: "foundata.dovecot.run"
+  vars:
+    run_dovecot_state: "absent"
+    run_dovecot_mail_user_manage: true
+    run_dovecot_mail_user_name: "vmail"
+    run_dovecot_mail_storage_path: "/srv/vmail"
+
+
+- name: "Molecule | Verify | Uninstall: check the role-managed files are gone"
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: __testing_uninstall_gone_stat
+  failed_when:
+    - __testing_uninstall_gone_stat['stat']['exists']
+  loop:
+    - "/etc/dovecot/dovecot.conf"
+    - "/etc/dovecot/conf.d/00-TOMBSTONE-ALL-FILES-HERE-IGNORED.README"
+    - "/etc/dovecot/passwd.masterusers"
+    - "/usr/local/bin/dovecot-quota-warning.sh"
+    - "/etc/dovecot/.ansible-external-files"
+    - "/usr/sbin/dovecot"
+
+
+- name: "Molecule | Verify | Uninstall: check the vmail account and group are gone"
+  ansible.builtin.getent:
+    database: "{{ item }}"
+    key: "vmail"
+    fail_key: false
+  loop:
+    - "passwd"
+    - "group"
+
+
+- name: "Molecule | Verify | Uninstall: check the mail storage and its data survived"
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: __testing_uninstall_kept_stat
+  failed_when:
+    - not __testing_uninstall_kept_stat['stat']['exists']
+  loop:
+    - "/srv/vmail"
+    - "/srv/vmail/KEEP-ME-user-data"
+
+
+- name: "Molecule | Verify | Uninstall: assert the vmail account and group are gone"
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['getent_passwd']['vmail'] is ansible.builtin.none
+      - ansible_facts['getent_group']['vmail'] is ansible.builtin.none
+    fail_msg: >-
+      The uninstall left the vmail service account or group behind.
+    success_msg: "The uninstall removed the vmail service account and group."
+
+
+- name: "Molecule | Verify | Uninstall: remove the seeded user-data file again"
+  ansible.builtin.file:
+    path: "/srv/vmail/KEEP-ME-user-data"
+    state: "absent"

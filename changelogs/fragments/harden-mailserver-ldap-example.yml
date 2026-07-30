@@ -1,0 +1,5 @@
+minor_changes:
+  - >-
+    Harden the LDAP Maildir example by requiring encrypted directory
+    connections, validating TLS material, removing local-account fallbacks, and
+    provisioning the mail storage root on fresh hosts.

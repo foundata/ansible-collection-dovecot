@@ -114,6 +114,11 @@
         # TLS policy.
         dovecot_playbook_ssl_min_protocol: "{{ dovecot_playbook_ssl_min_protocol | ansible.builtin.default('TLSv1.2') }}"
         dovecot_playbook_ssl_prefer_ciphers: "{{ dovecot_playbook_ssl_prefer_ciphers | ansible.builtin.default('client') }}"
+        # LDAP bind credentials must never cross the network in cleartext.
+        # ldaps:// is the default model; ldap:// is accepted only when STARTTLS
+        # is explicitly enabled.
+        dovecot_playbook_ldap_starttls: >-
+          {{ dovecot_playbook_ldap_starttls | ansible.builtin.default(false) | ansible.builtin.bool }}
         # Listener ports (standard defaults; rarely changed).
         dovecot_playbook_imap_port: "{{ dovecot_playbook_imap_port | ansible.builtin.default(143) }}"
         dovecot_playbook_imaps_port: "{{ dovecot_playbook_imaps_port | ansible.builtin.default(993) }}"
@@ -165,6 +170,46 @@
               'unix_listener ' ~ dovecot_playbook_postfix_private_dir ~ '/quota-status':
               {'mode': '0660', 'user': dovecot_playbook_postfix_user, 'group': dovecot_playbook_postfix_group}} }}
 
+
+    - name: "Require encrypted LDAP transport"
+      ansible.builtin.assert:
+        that:
+          - >-
+            (dovecot_playbook_ldap_uri is ansible.builtin.match('^ldaps://') and
+             not dovecot_playbook_ldap_starttls) or
+            (dovecot_playbook_ldap_uri is ansible.builtin.match('^ldap://') and
+             dovecot_playbook_ldap_starttls)
+        quiet: true
+        fail_msg: >-
+          Use ldaps:// with dovecot_playbook_ldap_starttls=false, or ldap://
+          with dovecot_playbook_ldap_starttls=true. Cleartext LDAP bind
+          credentials are not allowed by this example.
+        success_msg: "LDAP transport encryption is enabled."
+
+
+    - name: "Check the TLS certificate and key"
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ dovecot_playbook_tls_cert_file }}"
+        - "{{ dovecot_playbook_tls_key_file }}"
+      register: dovecot_playbook_tls_files
+
+
+    - name: "Require readable TLS certificate material"
+      ansible.builtin.assert:
+        that:
+          - dovecot_playbook_tls_file['stat']['exists']
+          - dovecot_playbook_tls_file['stat']['isreg']
+        quiet: true
+        fail_msg: "TLS file '{{ dovecot_playbook_tls_file['item'] }}' is missing or is not a regular file."
+        success_msg: "TLS file '{{ dovecot_playbook_tls_file['item'] }}' exists."
+      loop: "{{ dovecot_playbook_tls_files['results'] }}"
+      loop_control:
+        loop_var: "dovecot_playbook_tls_file"
+        label: "{{ dovecot_playbook_tls_file['item'] }}"
+
+
     # The role provisions the mail storage root and the vmail account, but a few
     # application-level subdirectories the config below references are this playbook's
     # responsibility (mail storage provisioning is out of scope for the role - see the
@@ -174,6 +219,15 @@
     # Create them before the role starts Dovecot. Ownership uses the NUMERIC vmail
     # UID/GID on purpose: the vmail account is created by the role, which runs after
     # these pre_tasks, so the name may not resolve yet.
+    - name: "Provision the mail storage root before its subdirectories"
+      ansible.builtin.file:
+        path: "{{ dovecot_playbook_mail_storage_path }}"
+        state: "directory"
+        owner: "{{ dovecot_playbook_vmail_uid }}"
+        group: "{{ dovecot_playbook_vmail_gid }}"
+        mode: "u=rwx,g=rwx,o=" # 0770, matches foundata.dovecot.run
+
+
     - name: "Provision mail subdirectories the Dovecot config references"
       ansible.builtin.file:
         path: "{{ item }}"
@@ -665,6 +719,10 @@
             acl_ignore: true
             mail_driver: "maildir"
             mail_path: "{{ dovecot_playbook_mail_storage_path }}/public/mail/data"
+            # The public namespace has a different mailbox path than the
+            # private INBOX. Give its mailbox-list index a distinct filename
+            # or Dovecot refuses to initialize either namespace at runtime.
+            mailbox_list_index_prefix: "dovecot.list.index.public"
             mail_index_private_path: "~/public/index"
             mail_control_path: "~/public/control"
             mail_volatile_path: "~/public/volatile"
@@ -835,7 +893,7 @@
           # All of these are required deployment parameters (no default; asserted
           # in pre_tasks). Set them via inventory/group_vars/-e.
           ldap_uris: "{{ dovecot_playbook_ldap_uri }}"
-          ldap_starttls: false # using ldaps:// here, so no STARTTLS
+          ldap_starttls: "{{ dovecot_playbook_ldap_starttls }}"
           ldap_base: "{{ dovecot_playbook_ldap_base }}"
           ldap_scope: "subtree"
           ldap_auth_dn: "{{ dovecot_playbook_ldap_bind_dn }}"
@@ -959,10 +1017,6 @@
               userdb_home: "{{ dovecot_playbook_mail_storage_path }}/home/%{ldap:mail | lower}"
               userdb_uid: "vmail"
               userdb_gid: "vmail"
-          # ...then local shadow as a fallback for system accounts.
-          - name: "shadow"
-            driver: "shadow"
-
         # userdb (resolve uid/gid/home) chain.
         run_dovecot_userdbs:
           # Use the userdb_* fields prefetched by the LDAP passdb above -> no
@@ -990,9 +1044,6 @@
               home: "{{ dovecot_playbook_mail_storage_path }}/home/%{ldap:mail | lower}"
               uid: "vmail"
               gid: "vmail"
-          - driver: "passwd"
-
-
         ##### External files rendered by the role
 
         run_dovecot_external_files:

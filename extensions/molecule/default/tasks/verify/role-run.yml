@@ -806,7 +806,7 @@
 # Upstream repository (repo.dovecot.org)
 - name: "Molecule | Verify | Upstream repository (Debian only)"
   when:
-    - ansible_facts['distribution'] == 'Debian' # Converge enablesrun_dovecot_repository_manage only on Debian
+    - (ansible_facts['distribution'] | ansible.builtin.lower) == 'debian' # Converge enablesrun_dovecot_repository_manage only on Debian
   block:
 
     - name: "Molecule | Verify | Read the deb822 apt source for repo.dovecot.org"

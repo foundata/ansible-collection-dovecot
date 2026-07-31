@@ -80,7 +80,7 @@
       # whole stack works on the newer upstream 2.4.x. The other platforms keep
       # the flag false (enabling it would hard-fail by design) and so continue to
       # test the distribution-package path. Evaluated per host.
-      run_dovecot_repository_manage: "{{ (ansible_facts['distribution'] == 'Debian') | ansible.builtin.bool }}"
+      run_dovecot_repository_manage: "{{ ((ansible_facts['distribution'] | ansible.builtin.lower) == 'debian') | ansible.builtin.bool }}"
 
       # On the Debian repo path, also turn on autoupgrade so dovecot-core is
       # actually installed/upgraded FROM repo.dovecot.org (state=latest). With
@@ -89,7 +89,7 @@
       # "installed from upstream" assert would fail on a re-used container. This
       # mirrors the realistic intent: you enable the upstream repo to get its
       # (newer) packages. Off on the other platforms (distro-package path).
-      run_dovecot_autoupgrade: "{{ (ansible_facts['distribution'] == 'Debian') | ansible.builtin.bool }}"
+      run_dovecot_autoupgrade: "{{ ((ansible_facts['distribution'] | ansible.builtin.lower) == 'debian') | ansible.builtin.bool }}"
 
       # mail identity. UID/GID are deliberately set high to avoid colliding
       # with whatever resident the test image happens to ship at uid 1000

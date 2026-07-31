@@ -39,7 +39,7 @@
 - name: "Setup | Install | Default | Install or upgrade packages"
   ansible.builtin.package:
     name: "{{ __run_dovecot_packages_install }}"
-    state: "{{ 'latest' if run_dovecot_autoupgrade else 'present' }}"
+    state: "{{ 'latest' if (run_dovecot_autoupgrade | ansible.builtin.bool) else 'present' }}"
   when:
     - __run_dovecot_packages_install is ansible.builtin.defined
     - (__run_dovecot_packages_install | ansible.builtin.length) > 0
@@ -59,7 +59,7 @@
 - name: "Setup | Install | Default | Install or upgrade additional packages for declared protocols and plugins"
   ansible.builtin.package:
     name: "{{ lookup('ansible.builtin.template', 'helper_list_extra_packages.j2') }}"
-    state: "{{ 'latest' if run_dovecot_autoupgrade else 'present' }}"
+    state: "{{ 'latest' if (run_dovecot_autoupgrade | ansible.builtin.bool) else 'present' }}"
   when:
     - (lookup('ansible.builtin.template', 'helper_list_extra_packages.j2') | ansible.builtin.length) > 0
   register: __run_dovecot_package_install_extras_result # to decide if a handler flush (config/default.yml) is necessary

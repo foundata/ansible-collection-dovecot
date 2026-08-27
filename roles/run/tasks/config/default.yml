@@ -129,7 +129,7 @@
 
 - name: "Config | Default | External files | Remove files at paths no longer configured"
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ __run_dovecot_stale_path_item }}"
     state: "absent"
   loop: >-
     {{
@@ -137,6 +137,8 @@
       | ansible.builtin.reject('ansible.builtin.in', __run_dovecot_external_files_owned)
       | ansible.builtin.list
     }}
+  loop_control:
+    loop_var: "__run_dovecot_stale_path_item"
   notify:
     - "run_dovecot: reload dovecot.service"
 

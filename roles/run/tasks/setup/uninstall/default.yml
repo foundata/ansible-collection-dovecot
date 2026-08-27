@@ -34,7 +34,7 @@
 
 - name: "Setup | Uninstall | Default | Remove role-managed configuration and external files"
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ __run_dovecot_removal_item }}"
     state: "absent"
   vars:
     __run_dovecot_uninstall_manifest_paths: >-
@@ -61,6 +61,8 @@
         __run_dovecot_external_files_manifest_path
       ] + __run_dovecot_uninstall_manifest_paths) | ansible.builtin.unique
     }}
+  loop_control:
+    loop_var: "__run_dovecot_removal_item"
 
 
 # Mail storage directory (and its contents) is deliberately NOT removed on

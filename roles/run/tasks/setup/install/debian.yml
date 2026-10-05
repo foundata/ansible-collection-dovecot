@@ -12,6 +12,14 @@
     - __run_dovecot_repository_supported | ansible.builtin.bool
   block:
 
+    # Replaces deb822_repository's install_python_debian (ansible-core 2.20+)
+    # to stay compatible with ansible-core 2.19.
+    - name: "Setup | Install | Debian | Install python3-debian (required by deb822_repository)"
+      ansible.builtin.apt:
+        name: "python3-debian"
+        state: "present"
+
+
     - name: "Setup | Install | Debian | Configure the deb822 apt source"
       ansible.builtin.deb822_repository:
         name: "dovecot-ce" # -> /etc/apt/sources.list.d/dovecot-ce.sources
@@ -23,10 +31,6 @@
         suites: "{{ __run_dovecot_repository_apt_suites }}"
         components: "{{ __run_dovecot_repository_apt_components }}"
         signed_by: "{{ __run_dovecot_repository_gpgpubkey }}"
-        # The module parses/writes the deb822 file via the python3-debian
-        # library; let it pull that in on hosts where it is not preinstalled
-        # (minimal images) instead of making the operator stage it separately.
-        install_python_debian: true
       register: __run_dovecot_repository_source_result
 
 

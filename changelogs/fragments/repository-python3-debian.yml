@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - >
+    ``run`` role - Enabling ``run_dovecot_repository_manage`` on Debian no
+    longer fails on ansible-core 2.19. The role now installs ``python3-debian``
+    itself instead of using the ``install_python_debian`` option of
+    ``ansible.builtin.deb822_repository``, which ansible-core added in 2.20.

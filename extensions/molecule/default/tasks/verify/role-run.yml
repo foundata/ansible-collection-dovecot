@@ -365,6 +365,9 @@
       # to show it"); the key path assertion below needs the real value.
       - "-P"
   register: __testing_doveconf_result
+  # -P also reveals the LDAP bind password of the fixture; keep the output
+  # out of the task log.
+  no_log: true
   changed_when:
     - false
   failed_when:
@@ -385,7 +388,10 @@
       - __testing_dovecot_ssl_key_path in __testing_doveconf_result['stdout']
     fail_msg: >-
       doveconf -n failed or reported unexpected output.
-      stdout: {{ __testing_doveconf_result['stdout'] | ansible.builtin.default('') }}
+      stdout (lines with passwords omitted):
+      {{ __testing_doveconf_result['stdout_lines'] | ansible.builtin.default([])
+         | ansible.builtin.reject('ansible.builtin.search', 'password')
+         | ansible.builtin.join('\n') }}
       stderr: {{ __testing_doveconf_result['stderr'] | ansible.builtin.default('') }}
     success_msg: "doveconf -n succeeded and reports the expected protocols and TLS settings."
 

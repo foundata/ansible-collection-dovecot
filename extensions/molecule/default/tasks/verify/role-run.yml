@@ -361,6 +361,9 @@
     argv:
       - "{{ __run_dovecot_doveconf_exec_path }}"
       - "-n"
+      # Dovecot 2.4.5 hides ssl_server_key_file without -P ("# hidden, use -P
+      # to show it"); the key path assertion below needs the real value.
+      - "-P"
   register: __testing_doveconf_result
   changed_when:
     - false

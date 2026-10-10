@@ -139,6 +139,8 @@ an
 [SPDX software bill of materials (SBOM)](https://en.wikipedia.org/wiki/Software_Package_Data_Exchange).
 <!--REUSE-IgnoreEnd-->
 
+[![REUSE status](https://api.reuse.software/badge/github.com/foundata/ansible-collection-dovecot)](https://api.reuse.software/info/github.com/foundata/ansible-collection-dovecot)
+
 
 
 ### Trademarks<a id="trademarks"></a>

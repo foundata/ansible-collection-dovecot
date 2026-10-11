@@ -18,6 +18,9 @@
 # Security Notice: These are NOT real credentials. Test/demo data only.
 # LDAP admin: cn=admin,dc=example,dc=test / AdminTest1234__
 # Demo user:  uid=ldapuser,ou=people,dc=example,dc=test / LdapTest1234__
+#
+# SPDX-FileCopyrightText: foundata GmbH <https://foundata.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 
 ### Per-OS parameters

@@ -28,6 +28,9 @@
 # - Mail storage provisioning (partition/filesystem/mount of the /srv/vmail
 #   directory) if you e.g. want this to live on a dedicated block device or
 #   partition.
+#
+# SPDX-FileCopyrightText: foundata GmbH <https://foundata.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 ---
 

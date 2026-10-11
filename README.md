@@ -1,5 +1,10 @@
 # Ansible collection: `foundata.dovecot`
 
+<!--
+SPDX-FileCopyrightText: foundata GmbH <https://foundata.com>
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+
 This repository contains the `foundata.dovecot` Ansible Collection.
 
 It provides resources to manage and use [Dovecot](https://dovecot.org/), a

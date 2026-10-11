@@ -1,4 +1,7 @@
 # Execution Environment (EE) dependencies for the foundata.dovecot collection
+#
+# SPDX-FileCopyrightText: foundata GmbH <https://foundata.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 ---
 

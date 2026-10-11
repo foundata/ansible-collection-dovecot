@@ -18,6 +18,9 @@
 
    Tokens beginning with `$` (e.g. `$mail_plugins`) are skipped as those are
    Dovecot setting references, not literal plugin/protocol names.
+
+SPDX-FileCopyrightText: foundata GmbH <https://foundata.com>
+SPDX-License-Identifier: GPL-3.0-or-later
 #}
 {% set protocols_raw = run_dovecot_settings['protocols'] | ansible.builtin.default([]) -%}
 {% set plugin_strings = [] -%}

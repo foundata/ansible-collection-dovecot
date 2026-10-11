@@ -1,5 +1,10 @@
 # Ansible role: `foundata.dovecot.run`
 
+<!--
+SPDX-FileCopyrightText: foundata GmbH <https://foundata.com>
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+
 The `foundata.dovecot.run` Ansible role (part of the `foundata.dovecot` Ansible collection). It provides automated installation, and configuration management of [Dovecot](https://dovecot.org/) across major Linux distributions.
 
 Please note that **this role only supports Dovecot 2.4.x or newer**.

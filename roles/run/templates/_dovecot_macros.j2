@@ -16,6 +16,9 @@
    wherever they appear so the top-level template can emit them first; this is
    required by Dovecot 2.4 ("dovecot_config_version" MUST be the first
    non-comment line in the file).
+
+SPDX-FileCopyrightText: foundata GmbH <https://foundata.com>
+SPDX-License-Identifier: GPL-3.0-or-later
 #}
 {% macro render_settings(settings, indent_level=0) -%}
 {%-   set ns = namespace(out='') -%}

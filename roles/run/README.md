@@ -5,7 +5,9 @@ SPDX-FileCopyrightText: foundata GmbH <https://foundata.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-The `foundata.dovecot.run` Ansible role (part of the `foundata.dovecot` Ansible collection). It provides automated installation, and configuration management of [Dovecot](https://dovecot.org/) across major Linux distributions.
+The `foundata.dovecot.run` Ansible role (part of the `foundata.dovecot` Ansible
+collection). It provides automated installation, and configuration management of
+[Dovecot](https://dovecot.org/) across major Linux distributions.
 
 Please note that **this role only supports Dovecot 2.4.x or newer**.
 
@@ -87,7 +89,9 @@ Uninstall:
         run_dovecot_state: "absent"
 ```
 
-Minimal IMAP server with a self-contained `passwd-file` backend and Maildir storage (implicit TLS on port 993). The role ships no opinionated Dovecot defaults, so `run_dovecot_settings` mirrors Dovecot's own 2.4 grammar 1:1:
+Minimal IMAP server with a self-contained `passwd-file` backend and Maildir
+storage (implicit TLS on port 993). The role ships no opinionated Dovecot
+defaults, so `run_dovecot_settings` mirrors Dovecot's own 2.4 grammar 1:1:
 
 ```yaml
 ---
@@ -128,7 +132,10 @@ Minimal IMAP server with a self-contained `passwd-file` backend and Maildir stor
             passwd_file_path: "/etc/dovecot/users"
 ```
 
-Install from the official upstream repository (`repo.dovecot.org`) instead of the distribution packages, to pick up newer 2.4.x maintenance releases (see [`run_dovecot_repository_manage`](#variable-run_dovecot_repository_manage); currently Debian 13 only among the supported platforms):
+Install from the official upstream repository (`repo.dovecot.org`) instead of
+the distribution packages, to pick up newer 2.4.x maintenance releases (see
+[`run_dovecot_repository_manage`](#variable-run_dovecot_repository_manage);
+currently Debian 13 only among the supported platforms):
 
 ```yaml
 ---
@@ -152,7 +159,11 @@ Install from the official upstream repository (`repo.dovecot.org`) instead of th
           protocols: "imap lmtp"
 ```
 
-For a complete, production-style example with LDAP / Active Directory authentication, Maildir storage, per-user quota with warning mails, Sieve filtering, shared and public IMAP namespaces, see the ready-to-adapt playbook shipped with this collection: [`playbooks/mailserver_ldap_maildir.yml`](../../playbooks/mailserver_ldap_maildir.yml).
+For a complete, production-style example with LDAP / Active Directory
+authentication, Maildir storage, per-user quota with warning mails, Sieve
+filtering, shared and public IMAP namespaces, see the ready-to-adapt playbook
+shipped with this collection:
+[`playbooks/mailserver_ldap_maildir.yml`](../../playbooks/mailserver_ldap_maildir.yml).
 
 
 
@@ -160,13 +171,18 @@ For a complete, production-style example with LDAP / Active Directory authentica
 
 It might be useful and faster to only call parts of the role by using tags:
 
-- `run_dovecot_setup`: Manage basic resources, such as packages or service users.
-- `run_dovecot_config`: Manage settings, such as adapting or creating configuration files.
-- `run_dovecot_service`: Manage services and daemons, such as running states and service boot configurations.
+- `run_dovecot_setup`: Manage basic resources, such as packages or service
+  users.
+- `run_dovecot_config`: Manage settings, such as adapting or creating
+  configuration files.
+- `run_dovecot_service`: Manage services and daemons, such as running states and
+  service boot configurations.
 
-There are also tags that are generally not intended to be called directly but are included for completeness and to cover edge cases:
+There are also tags that are generally not intended to be called directly but
+are included for completeness and to cover edge cases:
 
-- `run_dovecot_always`, `always`: Tasks needed by the role itself for internal role setup and the Ansible environment.
+- `run_dovecot_always`, `always`: Tasks needed by the role itself for internal
+  role setup and the Ansible environment.
 
 
 <!-- ANSIBLE DOCSMITH MAIN START -->
@@ -930,7 +946,8 @@ See `dependencies` in [`meta/main.yml`](./meta/main.yml).
 
 ## Compatibility<a id="compatibility"></a>
 
-See `min_ansible_version` in [`meta/main.yml`](./meta/main.yml) and `__run_dovecot_supported_platforms` in [`vars/main.yml`](./vars/main.yml).
+See `min_ansible_version` in [`meta/main.yml`](./meta/main.yml) and
+`__run_dovecot_supported_platforms` in [`vars/main.yml`](./vars/main.yml).
 
 
 

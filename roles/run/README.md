@@ -175,26 +175,29 @@ There are also tags that are generally not intended to be called directly but ar
 
 Main entry point for the foundata.dovecot.run role
 
+Manage Dovecot, a secure and high-performance open-source IMAP and POP3
+server
+
 The following variables can be configured for this role:
 
-| Variable | Type | Required | Default | Description (abstract) |
-|----------|------|----------|---------|------------------------|
-| `run_dovecot_state` | `str` | No | `"present"` | Determines whether the managed resources should be `present` or `absent`.<br><br>`present` ensures that required components, such as software packages, are installed and configured.<br><br>`absent` reverts changes as much as possible, such as […](#variable-run_dovecot_state) |
-| `run_dovecot_autoupgrade` | `bool` | No | `false` | If set to `true`, all managed packages will be upgraded during each Ansible run (e.g., when the package provider detects a newer version than the currently installed one). |
-| `run_dovecot_repository_manage` | `bool` | No | `false` | Whether to install Dovecot from the official upstream package repository at https://repo.dovecot.org/ instead of the distribution's own packages. This role only supports Dovecot 2.4.x or newer.<br><br>`false` (the default) keeps the distribution […](#variable-run_dovecot_repository_manage) |
-| `run_dovecot_repository_channel` | `str` | No | `"ce-2.4-latest"` | Which repo.dovecot.org channel to use when `run_dovecot_repository_manage` is `true`. This var's value has no effect otherwise. See https://repo.dovecot.org for details. Short summary:<br><br>- Use `ce-2.4-latest` (the default, recommended) follows […](#variable-run_dovecot_repository_channel) |
-| `run_dovecot_service_state` | `str` | No | `"enabled"` | Defines the status of the service(s).<br><br>`enabled`: Service is running and will start automatically at boot.<br><br>`disabled`: Service is stopped and will not start automatically at boot.<br><br>`running`: Service is running but will not start […](#variable-run_dovecot_service_state) |
-| `run_dovecot_mail_user_manage` | `bool` | No | `true` | Controls whether the role manages the system user and group that own the mail storage tree (Dovecot's conventional "vmail" identity).<br><br>When set to `true`, the role creates the group defined by `run_dovecot_mail_group_name` / […](#variable-run_dovecot_mail_user_manage) |
-| `run_dovecot_mail_user_name` | `str` | No | `"vmail"` | Name of the POSIX user that owns Dovecot's mail storage tree.<br><br>Used both for `chown` on `run_dovecot_mail_storage_path` (when `run_dovecot_mail_user_manage` is `true`) and as the canonical user name you typically reference from […](#variable-run_dovecot_mail_user_name) |
-| `run_dovecot_mail_user_uid` | `int` | No | `1000` | Numeric UID for the user defined by `run_dovecot_mail_user_name`.<br><br>A fixed UID makes mail storage portable between hosts (rsync, restore from backup, container migrations) without ownership rewrites. Pick a value that is free across all hosts […](#variable-run_dovecot_mail_user_uid) |
-| `run_dovecot_mail_group_name` | `str` | No | `"vmail"` | Name of the POSIX group that owns Dovecot's mail storage tree.<br><br>See `run_dovecot_mail_user_name` for usage notes as the same applies here for group ownership. |
-| `run_dovecot_mail_group_gid` | `int` | No | `1000` | Numeric GID for the group defined by `run_dovecot_mail_group_name`.<br><br>See `run_dovecot_mail_user_uid` for the rationale on fixed numeric IDs.<br><br>Only takes effect when `run_dovecot_mail_user_manage` is `true`. |
-| `run_dovecot_mail_storage_path` | `path` | No | `"/srv/vmail"` | Absolute path to the root directory holding Dovecot's mail storage tree.<br><br>The role ensures the directory exists with ownership `run_dovecot_mail_user_name`:`run_dovecot_mail_group_name` and mode `0770`. Filesystem provisioning (partitioning, […](#variable-run_dovecot_mail_storage_path) |
-| `run_dovecot_settings` | `dict` | No | `{}` | Complete Dovecot configuration as a nested YAML dictionary that mirrors Dovecot 2.4 grammar 1:1. The role renders it into a single `/etc/dovecot/dovecot.conf` (so there are no `conf.d` includes).<br><br>Rules:<br><br>- Scalar value → `key = value`. […](#variable-run_dovecot_settings) |
-| `run_dovecot_settings_extra_content` | `str` | No | `""` | Raw verbatim Dovecot configuration appended at the end of `/etc/dovecot/dovecot.conf` (before the trailing `!include_try local.conf`).<br><br>This is an escape hatch of last resort for the rare case where the `run_dovecot_settings` dictionary cannot […](#variable-run_dovecot_settings_extra_content) |
-| `run_dovecot_passdbs` 🔒 | `list` | No | `[]` | Ordered list of Dovecot `passdb { ... }` blocks (the password database lookup chain). One block is rendered per list entry, in declaration order — this is the authentication fallback chain Dovecot evaluates top-to-bottom.<br><br>A dedicated list is […](#variable-run_dovecot_passdbs) |
-| `run_dovecot_userdbs` | `list` | No | `[]` | Ordered list of Dovecot `userdb { ... }` blocks (the user database lookup chain). One block is rendered per list entry, in declaration order.<br><br>Same rationale, structure and rendering as `run_dovecot_passdbs` (named blocks via the reserved […](#variable-run_dovecot_userdbs) |
-| `run_dovecot_external_files` | `dict` | No | `{}` | Container for file artifacts Dovecot reads or runs that are NOT `dovecot.conf` itself. They have their own parsers or semantics (passwd-file format, executable scripts, ...). You could create these files with your own additional tasks (e.g. upfront, […](#variable-run_dovecot_external_files) |
+|               Variable               |  Type  | Required |      Default      | Description (abstract) |
+| ------------------------------------ | ------ | -------- | ----------------- | ---------------------- |
+| `run_dovecot_state`                  | `str`  | No       | `"present"`       | Determines whether the managed resources should be `present` or `absent`.<br><br>`present` ensures that required components, such as software packages, are installed and configured.<br><br>`absent` reverts changes as much as possible, such as […](#variable-run_dovecot_state) |
+| `run_dovecot_autoupgrade`            | `bool` | No       | `false`           | If set to `true`, all managed packages will be upgraded during each Ansible run (e.g., when the package provider detects a newer version than the currently installed one). |
+| `run_dovecot_repository_manage`      | `bool` | No       | `false`           | Whether to install Dovecot from the official upstream package repository at <https://repo.dovecot.org/> instead of the distribution's own packages. This role only supports Dovecot 2.4.x or newer.<br><br>`false` (the default) keeps the distribution […](#variable-run_dovecot_repository_manage) |
+| `run_dovecot_repository_channel`     | `str`  | No       | `"ce-2.4-latest"` | Which repo.dovecot.org channel to use when `run_dovecot_repository_manage` is `true`. This var's value has no effect otherwise. See <https://repo.dovecot.org> for details. Short summary:<br><br>- Use `ce-2.4-latest` (the default, recommended) follows […](#variable-run_dovecot_repository_channel) |
+| `run_dovecot_service_state`          | `str`  | No       | `"enabled"`       | Defines the status of the service(s).<br><br>`enabled`: Service is running and will start automatically at boot.<br><br>`disabled`: Service is stopped and will not start automatically at boot.<br><br>`running`: Service is running but will not start […](#variable-run_dovecot_service_state) |
+| `run_dovecot_mail_user_manage`       | `bool` | No       | `true`            | Controls whether the role manages the system user and group that own the mail storage tree (Dovecot's conventional "vmail" identity).<br><br>When set to `true`, the role creates the group defined by `run_dovecot_mail_group_name` / […](#variable-run_dovecot_mail_user_manage) |
+| `run_dovecot_mail_user_name`         | `str`  | No       | `"vmail"`         | Name of the POSIX user that owns Dovecot's mail storage tree.<br><br>Used both for `chown` on `run_dovecot_mail_storage_path` (when `run_dovecot_mail_user_manage` is `true`) and as the canonical user name you typically reference from […](#variable-run_dovecot_mail_user_name) |
+| `run_dovecot_mail_user_uid`          | `int`  | No       | `1000`            | Numeric UID for the user defined by `run_dovecot_mail_user_name`.<br><br>A fixed UID makes mail storage portable between hosts (rsync, restore from backup, container migrations) without ownership rewrites. Pick a value that is free across all hosts […](#variable-run_dovecot_mail_user_uid) |
+| `run_dovecot_mail_group_name`        | `str`  | No       | `"vmail"`         | Name of the POSIX group that owns Dovecot's mail storage tree.<br><br>See `run_dovecot_mail_user_name` for usage notes as the same applies here for group ownership. |
+| `run_dovecot_mail_group_gid`         | `int`  | No       | `1000`            | Numeric GID for the group defined by `run_dovecot_mail_group_name`.<br><br>See `run_dovecot_mail_user_uid` for the rationale on fixed numeric IDs.<br><br>Only takes effect when `run_dovecot_mail_user_manage` is `true`. |
+| `run_dovecot_mail_storage_path`      | `path` | No       | `"/srv/vmail"`    | Absolute path to the root directory holding Dovecot's mail storage tree.<br><br>The role ensures the directory exists with ownership `run_dovecot_mail_user_name`:`run_dovecot_mail_group_name` and mode `0770`. Filesystem provisioning (partitioning, […](#variable-run_dovecot_mail_storage_path) |
+| `run_dovecot_settings`               | `dict` | No       | `{}`              | Complete Dovecot configuration as a nested YAML dictionary that mirrors Dovecot 2.4 grammar 1:1. The role renders it into a single `/etc/dovecot/dovecot.conf` (so there are no `conf.d` includes).<br><br>Rules:<br><br>- Scalar value → `key = value`. […](#variable-run_dovecot_settings) |
+| `run_dovecot_settings_extra_content` | `str`  | No       | `""`              | Raw verbatim Dovecot configuration appended at the end of `/etc/dovecot/dovecot.conf` (before the trailing `!include_try local.conf`).<br><br>This is an escape hatch of last resort for the rare case where the `run_dovecot_settings` dictionary cannot […](#variable-run_dovecot_settings_extra_content) |
+| `run_dovecot_passdbs` 🔒             | `list` | No       | `[]`              | Ordered list of Dovecot `passdb { ... }` blocks (the password database lookup chain). One block is rendered per list entry, in declaration order — this is the authentication fallback chain Dovecot evaluates top-to-bottom.<br><br>A dedicated list is […](#variable-run_dovecot_passdbs) |
+| `run_dovecot_userdbs`                | `list` | No       | `[]`              | Ordered list of Dovecot `userdb { ... }` blocks (the user database lookup chain). One block is rendered per list entry, in declaration order.<br><br>Same rationale, structure and rendering as `run_dovecot_passdbs` (named blocks via the reserved […](#variable-run_dovecot_userdbs) |
+| `run_dovecot_external_files`         | `dict` | No       | `{}`              | Container for file artifacts Dovecot reads or runs that are NOT `dovecot.conf` itself. They have their own parsers or semantics (passwd-file format, executable scripts, ...). You could create these files with your own additional tasks (e.g. upfront, […](#variable-run_dovecot_external_files) |
 
 ### `run_dovecot_state`<a id="variable-run_dovecot_state"></a>
 
@@ -234,7 +237,7 @@ currently installed one).
 [*⇑ Back to ToC ⇑*](#toc)
 
 Whether to install Dovecot from the official upstream package repository at
-https://repo.dovecot.org/ instead of the distribution's own packages. This
+<https://repo.dovecot.org/> instead of the distribution's own packages. This
 role only supports Dovecot 2.4.x or newer.
 
 `false` (the default) keeps the distribution repository as the package source:
@@ -272,7 +275,7 @@ See `run_dovecot_repository_channel` to choose or pin the channel.
 
 Which repo.dovecot.org channel to use when `run_dovecot_repository_manage`
 is `true`. This var's value has no effect otherwise. See
-https://repo.dovecot.org for details. Short summary:
+<https://repo.dovecot.org> for details. Short summary:
 
 - Use `ce-2.4-latest` (the default, recommended) follows the latest 2.4.x
   maintenance release.
@@ -524,7 +527,7 @@ run_dovecot_settings:
 ```
 
 Reference for all Dovecot 2.4 settings and block types:
-https://doc.dovecot.org/main/core/summaries/settings.html
+<https://doc.dovecot.org/main/core/summaries/settings.html>
 
 - **Type**: `dict`
 - **Required**: No
@@ -588,7 +591,7 @@ Dovecot 2.4 removed the old `args` setting: driver-specific options are
 now given as individual inline settings instead (e.g. `password` for
 `static`, `passwd_file_path` for `passwd-file`, the LDAP connection
 settings for `ldap`, …). Refer to
-https://doc.dovecot.org/main/core/config/auth/passdb.html for the full
+<https://doc.dovecot.org/main/core/config/auth/passdb.html> for the full
 list of per-driver settings and their semantics.
 
 IMPORTANT: some settings are *driver-scoped* and Dovecot only accepts
@@ -641,7 +644,7 @@ other keys rendered as inline settings, no `args`), see there for
 details. For the `static` driver the synthetic user identity is given
 as a nested `fields { ... }` block (`uid`, `gid`, `home`, …).
 
-Refer to https://doc.dovecot.org/main/core/config/auth/userdb.html
+Refer to <https://doc.dovecot.org/main/core/config/auth/userdb.html>
 for the full list of per-driver settings and their semantics.
 
 Example:
@@ -733,7 +736,9 @@ and place the resulting `{SCHEME}hash` string into `password_hash`.
 - **Type**: `dict`
 - **Required**: No
 
-##### `run_dovecot_external_files['master_users']['enabled']`<a id="variable-run_dovecot_external_files-sub-master_users-sub-enabled"></a>
+<a id="variable-run_dovecot_external_files-sub-master_users-sub-enabled"></a>
+
+##### `run_dovecot_external_files['master_users']['enabled']`
 
 [*⇑ Back to ToC ⇑*](#toc)
 
@@ -744,7 +749,9 @@ When `false`, the role removes the file if present.
 - **Required**: No
 - **Default**: `true`
 
-##### `run_dovecot_external_files['master_users']['path']`<a id="variable-run_dovecot_external_files-sub-master_users-sub-path"></a>
+<a id="variable-run_dovecot_external_files-sub-master_users-sub-path"></a>
+
+##### `run_dovecot_external_files['master_users']['path']`
 
 [*⇑ Back to ToC ⇑*](#toc)
 
@@ -762,7 +769,9 @@ stable. Override here if you prefer another location.
 - **Required**: No
 - **Default**: `"/etc/dovecot/passwd.masterusers"`
 
-##### `run_dovecot_external_files['master_users']['entries']`<a id="variable-run_dovecot_external_files-sub-master_users-sub-entries"></a>
+<a id="variable-run_dovecot_external_files-sub-master_users-sub-entries"></a>
+
+##### `run_dovecot_external_files['master_users']['entries']`
 
 [*⇑ Back to ToC ⇑*](#toc)
 
@@ -773,7 +782,9 @@ Each entry maps to one line in `username:{SCHEME}hash` form.
 - **Required**: No
 - **List Elements**: `dict`
 
-###### `run_dovecot_external_files['master_users']['entries']['username']`<a id="variable-run_dovecot_external_files-sub-master_users-sub-entries-sub-username"></a>
+<a id="variable-run_dovecot_external_files-sub-master_users-sub-entries-sub-username"></a>
+
+###### `run_dovecot_external_files['master_users']['entries']['username']`
 
 [*⇑ Back to ToC ⇑*](#toc)
 
@@ -784,7 +795,9 @@ user convention.
 - **Type**: `str`
 - **Required**: No
 
-###### `run_dovecot_external_files['master_users']['entries']['password_hash']`<a id="variable-run_dovecot_external_files-sub-master_users-sub-entries-sub-password_hash"></a>
+<a id="variable-run_dovecot_external_files-sub-master_users-sub-entries-sub-password_hash"></a>
+
+###### `run_dovecot_external_files['master_users']['entries']['password_hash']`
 
 [*⇑ Back to ToC ⇑*](#toc)
 
@@ -829,7 +842,9 @@ the corresponding `service quota-warning` block from
 - **Type**: `dict`
 - **Required**: No
 
-##### `run_dovecot_external_files['quota_warning_script']['enabled']`<a id="variable-run_dovecot_external_files-sub-quota_warning_script-sub-enabled"></a>
+<a id="variable-run_dovecot_external_files-sub-quota_warning_script-sub-enabled"></a>
+
+##### `run_dovecot_external_files['quota_warning_script']['enabled']`
 
 [*⇑ Back to ToC ⇑*](#toc)
 
@@ -840,7 +855,9 @@ When `false`, the role removes the file if present.
 - **Required**: No
 - **Default**: `true`
 
-##### `run_dovecot_external_files['quota_warning_script']['path']`<a id="variable-run_dovecot_external_files-sub-quota_warning_script-sub-path"></a>
+<a id="variable-run_dovecot_external_files-sub-quota_warning_script-sub-path"></a>
+
+##### `run_dovecot_external_files['quota_warning_script']['path']`
 
 [*⇑ Back to ToC ⇑*](#toc)
 
@@ -852,7 +869,9 @@ be referenced from
 - **Type**: `path`
 - **Required**: No
 
-##### `run_dovecot_external_files['quota_warning_script']['from']`<a id="variable-run_dovecot_external_files-sub-quota_warning_script-sub-from"></a>
+<a id="variable-run_dovecot_external_files-sub-quota_warning_script-sub-from"></a>
+
+##### `run_dovecot_external_files['quota_warning_script']['from']`
 
 [*⇑ Back to ToC ⇑*](#toc)
 
@@ -868,7 +887,9 @@ allowed because mail header values must be single-line.
 - **Type**: `str`
 - **Required**: No
 
-##### `run_dovecot_external_files['quota_warning_script']['subject']`<a id="variable-run_dovecot_external_files-sub-quota_warning_script-sub-subject"></a>
+<a id="variable-run_dovecot_external_files-sub-quota_warning_script-sub-subject"></a>
+
+##### `run_dovecot_external_files['quota_warning_script']['subject']`
 
 [*⇑ Back to ToC ⇑*](#toc)
 
@@ -879,7 +900,9 @@ runtime (see `from` for the escaping rules).
 - **Type**: `str`
 - **Required**: No
 
-##### `run_dovecot_external_files['quota_warning_script']['body']`<a id="variable-run_dovecot_external_files-sub-quota_warning_script-sub-body"></a>
+<a id="variable-run_dovecot_external_files-sub-quota_warning_script-sub-body"></a>
+
+##### `run_dovecot_external_files['quota_warning_script']['body']`
 
 [*⇑ Back to ToC ⇑*](#toc)
 
@@ -894,8 +917,6 @@ rules).
 DE: Ihr Postfach ist zu ${PERCENT}% belegt.
 FR: Votre boîte est pleine à ${PERCENT}%
 "`
-
-
 
 
 

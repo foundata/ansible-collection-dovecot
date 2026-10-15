@@ -4,7 +4,7 @@ SPDX-FileCopyrightText: foundata GmbH <https://foundata.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 #}
 
-# {{ ansible_managed }}
+# {{ tpl_managed }}
 
 ################################################################################
 # Script for "service quota-warning {}" (Dovecot)
@@ -12,7 +12,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 # The invoking service MUST run as root:
 #
 #   service quota-warning {
-#     executable = script {{ __run_dovecot_external_files_quota_warning_path }}
+#     executable = script {{ tpl_external_files_quota_warning_path }}
 #     user = root
 #     ...
 #   }
@@ -116,9 +116,9 @@ esac
 # expansion on them, so a command substitution in the configuration cannot run
 # as root, and no here-document delimiter can be spoofed by a body that happens
 # to contain the delimiter on a line of its own.
-from={{ __run_dovecot_external_files_quota_warning_from | ansible.builtin.quote }}
-subject={{ __run_dovecot_external_files_quota_warning_subject | ansible.builtin.quote }}
-body={{ __run_dovecot_external_files_quota_warning_body | ansible.builtin.quote }}
+from={{ tpl_external_files_quota_warning_from | ansible.builtin.quote }}
+subject={{ tpl_external_files_quota_warning_subject | ansible.builtin.quote }}
+body={{ tpl_external_files_quota_warning_body | ansible.builtin.quote }}
 
 # Header values must stay single-line: a carriage return or line feed in them
 # would append arbitrary headers (or a message body) to the warning mail. Only
@@ -148,7 +148,7 @@ fi
     printf '\n%s\n' "${body}"
 } \
     | sed -e "s/[$]{PERCENT}/${percent}/g" -e "s/[$]PERCENT/${percent}/g" \
-    | {{ __run_dovecot_dovecot_lda_exec_path }} -d "${user}" -o quota_enforce=no
+    | {{ tpl_dovecot_lda_exec_path }} -d "${user}" -o quota_enforce=no
 
 # dovecot-lda exits with one of the following values:
 # 0

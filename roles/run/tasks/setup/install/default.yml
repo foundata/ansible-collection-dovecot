@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 ---
-
 - name: "Setup | Install | Default | Remove unwanted packages (e.g., to prevent conflicts or resolve incompatibilities)"
   ansible.builtin.package:
     name: "{{ __run_dovecot_packages_removal }}"
@@ -12,7 +11,6 @@
   when:
     - __run_dovecot_packages_removal is ansible.builtin.defined
     - (__run_dovecot_packages_removal | ansible.builtin.length) > 0
-
 
 - name: "Setup | Install | Default | Validate declared protocols against the platform's protocol-to-package map"
   ansible.builtin.assert:
@@ -23,10 +21,11 @@
       run_dovecot_settings['protocols']. Known protocols on this platform:
       {{ __run_dovecot_packages_protocols_map.keys() | ansible.builtin.sort | ansible.builtin.list | ansible.builtin.to_json }}.
     quiet: true
+  vars:
+    tpl_settings: "{{ run_dovecot_settings }}"
   loop: "{{ lookup('ansible.builtin.template', 'helper_list_protocols.j2') }}"
   loop_control:
     loop_var: "__run_dovecot_protocol_item"
-
 
 - name: "Setup | Install | Default | Validate declared mail_plugins against the platform's plugin-to-package map"
   ansible.builtin.assert:
@@ -38,10 +37,11 @@
       plugins on this platform:
       {{ __run_dovecot_packages_plugins_map.keys() | ansible.builtin.sort | ansible.builtin.list | ansible.builtin.to_json }}.
     quiet: true
+  vars:
+    tpl_settings: "{{ run_dovecot_settings }}"
   loop: "{{ lookup('ansible.builtin.template', 'helper_list_plugins.j2') }}"
   loop_control:
     loop_var: "__run_dovecot_plugin_item"
-
 
 - name: "Setup | Install | Default | Install or upgrade packages"
   ansible.builtin.package:
@@ -54,27 +54,38 @@
   notify:
     # new or upgraded binaries only take effect with a full restart (a restart
     # of a stopped service is a start, so this is also safe on fresh installs)
-    - "run_dovecot: restart dovecot.service"
-
+    - "run_dovecot_restart_dovecot"
 
 - name: "Setup | Install | Default | Print additional packages (extracted from settings via protocol and plugin maps)"
   ansible.builtin.debug:
     msg: "{{ lookup('ansible.builtin.template', 'helper_list_extra_packages.j2') }}"
     verbosity: 4
 
-
+  vars:
+    tpl_packages_authdb_map: "{{ __run_dovecot_packages_authdb_map }}"
+    tpl_packages_plugins_map: "{{ __run_dovecot_packages_plugins_map }}"
+    tpl_packages_protocols_map: "{{ __run_dovecot_packages_protocols_map }}"
+    tpl_passdbs: "{{ run_dovecot_passdbs }}"
+    tpl_settings: "{{ run_dovecot_settings }}"
+    tpl_userdbs: "{{ run_dovecot_userdbs }}"
 - name: "Setup | Install | Default | Install or upgrade additional packages for declared protocols and plugins"
   ansible.builtin.package:
     name: "{{ lookup('ansible.builtin.template', 'helper_list_extra_packages.j2') }}"
     state: "{{ 'latest' if (run_dovecot_autoupgrade | ansible.builtin.bool) else 'present' }}"
+  vars:
+    tpl_packages_authdb_map: "{{ __run_dovecot_packages_authdb_map }}"
+    tpl_packages_plugins_map: "{{ __run_dovecot_packages_plugins_map }}"
+    tpl_packages_protocols_map: "{{ __run_dovecot_packages_protocols_map }}"
+    tpl_passdbs: "{{ run_dovecot_passdbs }}"
+    tpl_settings: "{{ run_dovecot_settings }}"
+    tpl_userdbs: "{{ run_dovecot_userdbs }}"
   when:
     - (lookup('ansible.builtin.template', 'helper_list_extra_packages.j2') | ansible.builtin.length) > 0
   register: __run_dovecot_package_install_extras_result # to decide if a handler flush (config/default.yml) is necessary
   notify:
     # new or upgraded binaries only take effect with a full restart (a restart
     # of a stopped service is a start, so this is also safe on fresh installs)
-    - "run_dovecot: restart dovecot.service"
-
+    - "run_dovecot_restart_dovecot"
 
 - name: "Setup | Install | Default | Remove unwanted files and directories (e.g., to prevent conflicts or resolve incompatibilities)"
   ansible.builtin.file:
@@ -86,7 +97,6 @@
   loop: "{{ __run_dovecot_paths_removal }}"
   loop_control:
     loop_var: "__run_dovecot_removal_path_item"
-
 
 - name: "Setup | Install | Default | Neutralize distribution config files (overwrite to survive package updates)"
   ansible.builtin.copy:
@@ -121,7 +131,6 @@
     loop_var: "__run_dovecot_neutralize_item"
     label: "{{ __run_dovecot_neutralize_item['key'] }}"
 
-
 - name: "Setup | Install | Default | Manage mail storage POSIX group (vmail)"
   ansible.builtin.group:
     name: "{{ run_dovecot_mail_group_name }}"
@@ -130,7 +139,6 @@
     state: "present"
   when:
     - run_dovecot_mail_user_manage | ansible.builtin.bool
-
 
 - name: "Setup | Install | Default | Manage mail storage POSIX user (vmail)"
   ansible.builtin.user:
@@ -147,7 +155,6 @@
   when:
     - run_dovecot_mail_user_manage | ansible.builtin.bool
 
-
 - name: "Setup | Install | Default | Manage mail storage directory"
   ansible.builtin.file:
     path: "{{ run_dovecot_mail_storage_path }}"
@@ -157,7 +164,6 @@
     mode: "u=rwx,g=rwx,o=" # 0770
   when:
     - run_dovecot_mail_user_manage | ansible.builtin.bool
-
 
 - name: "Setup | Install | Default | Drop tombstone marker into the (now-dormant) conf.d directory"
   ansible.builtin.copy:

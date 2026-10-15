@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: foundata GmbH <https://foundata.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 #}
-# {{ ansible_managed }}
+# {{ tpl_managed }}
 
 # Dovecot master-users passwd-file
 #
@@ -13,6 +13,6 @@ SPDX-License-Identifier: GPL-3.0-or-later
 # block in dovecot.conf. Master users authenticate as
 # "<real-user>*<master-username>" per the Dovecot master user convention.
 
-{% for entry in (__run_dovecot_external_files_master_users_entries | ansible.builtin.default([])) -%}
+{% for entry in (tpl_external_files_master_users_entries | ansible.builtin.default([])) -%}
 {{ entry['username'] }}:{{ entry['password_hash'] }}
 {% endfor -%}

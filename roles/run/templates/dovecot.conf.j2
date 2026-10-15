@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: foundata GmbH <https://foundata.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 #}
 {% from '_dovecot_macros.j2' import render_settings, render_dbblocks -%}
-# {{ ansible_managed }}
+# {{ tpl_managed }}
 
 # Dovecot configuration
 #
@@ -14,7 +14,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Distribution-shipped /etc/dovecot/conf.d/*.conf files are intentionally
 # NOT included (no `!include conf.d/*.conf` is emitted). They remain on
-# disk but dormant, see the {{ __run_dovecot_confd_tombstone_file_path | ansible.builtin.basename }}
+# disk but dormant, see the {{ tpl_confd_tombstone_file_path | ansible.builtin.basename }}
 # in that directory.
 
 {# Dovecot 2.4 REQUIRES dovecot_config_version as the first non-comment line
@@ -22,27 +22,27 @@ SPDX-License-Identifier: GPL-3.0-or-later
    Emit them up front, regardless of where they appear in the user's
    run_dovecot_settings dict.
 #}
-{% if run_dovecot_settings['dovecot_config_version'] is ansible.builtin.defined -%}
-dovecot_config_version = {{ run_dovecot_settings['dovecot_config_version'] }}
+{% if tpl_settings['dovecot_config_version'] is ansible.builtin.defined -%}
+dovecot_config_version = {{ tpl_settings['dovecot_config_version'] }}
 {% endif -%}
-{% if run_dovecot_settings['dovecot_storage_version'] is ansible.builtin.defined -%}
-dovecot_storage_version = {{ run_dovecot_settings['dovecot_storage_version'] }}
+{% if tpl_settings['dovecot_storage_version'] is ansible.builtin.defined -%}
+dovecot_storage_version = {{ tpl_settings['dovecot_storage_version'] }}
 {% endif %}
 
-{{ render_settings(run_dovecot_settings) -}}
+{{ render_settings(tpl_settings) -}}
 
-{% if run_dovecot_passdbs | ansible.builtin.length > 0 %}
-{{ render_dbblocks(run_dovecot_passdbs, 'passdb') -}}
+{% if tpl_passdbs | ansible.builtin.length > 0 %}
+{{ render_dbblocks(tpl_passdbs, 'passdb') -}}
 {% endif -%}
-{% if run_dovecot_userdbs | ansible.builtin.length > 0 %}
-{{ render_dbblocks(run_dovecot_userdbs, 'userdb') -}}
+{% if tpl_userdbs | ansible.builtin.length > 0 %}
+{{ render_dbblocks(tpl_userdbs, 'userdb') -}}
 {% endif %}
 
-{% if run_dovecot_settings_extra_content | ansible.builtin.length > 0 -%}
+{% if tpl_settings_extra_content | ansible.builtin.length > 0 -%}
 ##
 ## Raw verbatim content from `run_dovecot_settings_extra_content`:
 ##
-{{ run_dovecot_settings_extra_content }}
+{{ tpl_settings_extra_content }}
 {% endif -%}
 
 ## Site-local overrides (not managed by Ansible).

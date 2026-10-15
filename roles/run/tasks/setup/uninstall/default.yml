@@ -4,14 +4,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 ---
-
 - name: "Setup | Uninstall | Default | Stop and disable service: {{ __run_dovecot_service_name }}"
   ansible.builtin.service:
     name: "{{ __run_dovecot_service_name }}"
     state: "stopped"
     enabled: false
-  failed_when: false # service may not exist anymore on partial uninstalls
-
+  failed_when:
+    - false # service may not exist anymore on partial uninstalls
 
 - name: "Setup | Uninstall | Default | Remove packages"
   ansible.builtin.package:
@@ -21,7 +20,6 @@
     - __run_dovecot_packages_uninstall is ansible.builtin.defined
     - (__run_dovecot_packages_uninstall | ansible.builtin.length) > 0
 
-
 # External files are removed at the union of the manifest-recorded paths (the
 # files this role actually created, covering paths that were renamed since),
 # the currently configured paths and the default paths (covering callers that
@@ -29,12 +27,11 @@
 - name: "Setup | Uninstall | Default | Read the manifest of previously created external files"
   ansible.builtin.slurp:
     src: "{{ __run_dovecot_external_files_manifest_path }}"
-  register: __run_dovecot_external_manifest_slurp
   failed_when:
     - __run_dovecot_external_manifest_slurp['msg'] is ansible.builtin.defined
     - "'file not found' not in (__run_dovecot_external_manifest_slurp['msg'] | ansible.builtin.lower)"
 
-
+  register: __run_dovecot_external_manifest_slurp
 - name: "Setup | Uninstall | Default | Remove role-managed configuration and external files"
   ansible.builtin.file:
     path: "{{ __run_dovecot_removal_item }}"
@@ -67,7 +64,6 @@
   loop_control:
     loop_var: "__run_dovecot_removal_item"
 
-
 # Mail storage directory (and its contents) is deliberately NOT removed on
 # uninstall: it almost always holds production user data. Operators who really
 # want it gone have to delete it themselves; we do not want to be the role that
@@ -78,9 +74,9 @@
       The mail storage directory at {{ run_dovecot_mail_storage_path }} (and any
       user data within it) is intentionally NOT removed. If you really want it
       gone, delete it manually.
+    verbosity: 0
   when:
     - run_dovecot_mail_storage_path is ansible.builtin.defined
-
 
 - name: "Setup | Uninstall | Default | Remove mail storage POSIX user (vmail)"
   ansible.builtin.user:
@@ -90,7 +86,6 @@
     force: false
   when:
     - run_dovecot_mail_user_manage | ansible.builtin.bool
-
 
 - name: "Setup | Uninstall | Default | Remove mail storage POSIX group (vmail)"
   ansible.builtin.group:

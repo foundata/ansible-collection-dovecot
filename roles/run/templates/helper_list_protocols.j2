@@ -6,7 +6,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
    `run_dovecot_settings['protocols']`, normalising scalar vs. list input and
    skipping `$variable` references and empty entries. Consumed by the
    Ansible-side assertion that catches unknown protocol names. #}
-{% set raw = run_dovecot_settings['protocols'] | ansible.builtin.default([]) -%}
+{% set raw = tpl_settings['protocols'] | ansible.builtin.default([]) -%}
 {% set out = [] -%}
 {% if raw is ansible.builtin.iterable and raw is not ansible.builtin.string -%}
 {%   for p in raw %}{% set _ = out.append(p | ansible.builtin.string | ansible.builtin.trim) %}{% endfor -%}

@@ -1,3 +1,4 @@
+{% set _ = none -%}
 {# Return the list of additional distribution packages to install on top of
    `__run_dovecot_packages_install`, derived from the user's Dovecot settings.
 
@@ -22,12 +23,12 @@
 SPDX-FileCopyrightText: foundata GmbH <https://foundata.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 #}
-{% set protocols_raw = run_dovecot_settings['protocols'] | ansible.builtin.default([]) -%}
+{% set protocols_raw = tpl_settings['protocols'] | ansible.builtin.default([]) -%}
 {% set plugin_strings = [] -%}
-{% if run_dovecot_settings['mail_plugins'] is ansible.builtin.defined -%}
-{%   set _ = plugin_strings.append(run_dovecot_settings['mail_plugins']) -%}
+{% if tpl_settings['mail_plugins'] is ansible.builtin.defined -%}
+{%   set _ = plugin_strings.append(tpl_settings['mail_plugins']) -%}
 {% endif -%}
-{% for key, value in run_dovecot_settings.items() -%}
+{% for key, value in tpl_settings.items() -%}
 {%   if (key is ansible.builtin.string) and (key.startswith('protocol ')) and (value is ansible.builtin.mapping) and (value['mail_plugins'] is ansible.builtin.defined) -%}
 {%     set _ = plugin_strings.append(value['mail_plugins']) -%}
 {%   endif -%}
@@ -50,7 +51,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 {% endfor -%}
 
 {% set authdb_drivers = [] -%}
-{% for db in ((run_dovecot_passdbs | ansible.builtin.default([])) + (run_dovecot_userdbs | ansible.builtin.default([]))) -%}
+{% for db in ((tpl_passdbs | ansible.builtin.default([])) + (tpl_userdbs | ansible.builtin.default([]))) -%}
 {%   if (db is ansible.builtin.mapping) and (db['driver'] is ansible.builtin.defined) -%}
 {%     set _ = authdb_drivers.append(db['driver'] | ansible.builtin.string | ansible.builtin.trim) -%}
 {%   endif -%}
@@ -58,18 +59,18 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 {% set extras = [] -%}
 {% for p in (protocols_list | ansible.builtin.reject('ansible.builtin.match', '^\s*$') | ansible.builtin.reject('ansible.builtin.match', '^\$') | ansible.builtin.unique | ansible.builtin.list) -%}
-{%   if p in __run_dovecot_packages_protocols_map -%}
-{%     for pkg in __run_dovecot_packages_protocols_map[p] %}{% set _ = extras.append(pkg) %}{% endfor -%}
+{%   if p in tpl_packages_protocols_map -%}
+{%     for pkg in tpl_packages_protocols_map[p] %}{% set _ = extras.append(pkg) %}{% endfor -%}
 {%   endif -%}
 {% endfor -%}
 {% for p in (plugin_list | ansible.builtin.reject('ansible.builtin.match', '^\s*$') | ansible.builtin.reject('ansible.builtin.match', '^\$') | ansible.builtin.unique | ansible.builtin.list) -%}
-{%   if p in __run_dovecot_packages_plugins_map -%}
-{%     for pkg in __run_dovecot_packages_plugins_map[p] %}{% set _ = extras.append(pkg) %}{% endfor -%}
+{%   if p in tpl_packages_plugins_map -%}
+{%     for pkg in tpl_packages_plugins_map[p] %}{% set _ = extras.append(pkg) %}{% endfor -%}
 {%   endif -%}
 {% endfor -%}
 {% for d in (authdb_drivers | ansible.builtin.reject('ansible.builtin.match', '^\s*$') | ansible.builtin.unique | ansible.builtin.list) -%}
-{%   if d in __run_dovecot_packages_authdb_map -%}
-{%     for pkg in __run_dovecot_packages_authdb_map[d] %}{% set _ = extras.append(pkg) %}{% endfor -%}
+{%   if d in tpl_packages_authdb_map -%}
+{%     for pkg in tpl_packages_authdb_map[d] %}{% set _ = extras.append(pkg) %}{% endfor -%}
 {%   endif -%}
 {% endfor -%}
 

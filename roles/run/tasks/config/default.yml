@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 ---
-
 - name: "Config | Default | Render main configuration file ({{ __run_dovecot_dovecotconf_file_path }})"
   ansible.builtin.template:
     src: "dovecot.conf.j2"
@@ -17,9 +16,15 @@
   # run_dovecot_passdbs), which must not be leaked into diff output. diff
   # instead of no_log on purpose: doveconf validation errors must stay visible.
   diff: false
+  vars:
+    tpl_confd_tombstone_file_path: "{{ __run_dovecot_confd_tombstone_file_path }}"
+    tpl_managed: "{{ ansible_managed }}"
+    tpl_passdbs: "{{ run_dovecot_passdbs }}"
+    tpl_settings: "{{ run_dovecot_settings }}"
+    tpl_settings_extra_content: "{{ run_dovecot_settings_extra_content }}"
+    tpl_userdbs: "{{ run_dovecot_userdbs }}"
   notify:
-    - "run_dovecot: reload dovecot.service"
-
+    - "run_dovecot_reload_dovecot"
 
 ### External files: ownership manifest of previously created files
 
@@ -31,13 +36,12 @@
 - name: "Config | Default | External files | Read the manifest of previously created files"
   ansible.builtin.slurp:
     src: "{{ __run_dovecot_external_files_manifest_path }}"
-  register: __run_dovecot_external_manifest_slurp
   failed_when:
     # tolerate a missing manifest (first run; treated as empty below)
     - __run_dovecot_external_manifest_slurp['msg'] is ansible.builtin.defined
     - "'file not found' not in (__run_dovecot_external_manifest_slurp['msg'] | ansible.builtin.lower)"
 
-
+  register: __run_dovecot_external_manifest_slurp
 - name: "Config | Default | External files | Determine the previously created files"
   ansible.builtin.set_fact:
     __run_dovecot_external_manifest_old: >-
@@ -51,8 +55,6 @@
 ### External files: Master users passwd-file
 
 - name: "Config | Default | External files | Master users"
-  when:
-    - run_dovecot_external_files['master_users'] is ansible.builtin.defined
   vars:
     __run_dovecot_external_files_master_users_path: >-
       {{ run_dovecot_external_files['master_users']['path']
@@ -61,8 +63,9 @@
       {{ run_dovecot_external_files['master_users']['entries'] | ansible.builtin.default([]) }}
     __run_dovecot_external_files_master_users_enabled: >-
       {{ run_dovecot_external_files['master_users']['enabled'] | ansible.builtin.default(true) }}
+  when:
+    - run_dovecot_external_files['master_users'] is ansible.builtin.defined
   block:
-
     - name: "Config | Default | External files | Master users: Render passwd-file"
       ansible.builtin.template:
         src: "master-users.j2"
@@ -72,11 +75,14 @@
         # it must be readable by the dovecot auth group, not the mail group.
         group: "{{ __run_dovecot_auth_group }}"
         mode: "u=rw,g=r,o=" # 0640, contains password hashes
-      no_log: true # the rendered file contains password hashes, keep them out of logs and diffs
+      vars:
+        tpl_external_files_master_users_entries: "{{ __run_dovecot_external_files_master_users_entries }}"
+        tpl_managed: "{{ ansible_managed }}"
       when:
         - __run_dovecot_external_files_master_users_enabled | ansible.builtin.bool
+      no_log: true # the rendered file contains password hashes, keep them out of logs and diffs
       notify:
-        - "run_dovecot: reload dovecot.service"
+        - "run_dovecot_reload_dovecot"
 
     - name: "Config | Default | External files | Master users: Remove passwd-file (disabled)"
       ansible.builtin.file:
@@ -85,14 +91,11 @@
       when:
         - not (__run_dovecot_external_files_master_users_enabled | ansible.builtin.bool)
       notify:
-        - "run_dovecot: reload dovecot.service"
-
+        - "run_dovecot_reload_dovecot"
 
 ### External files: Quota-warning script
 
 - name: "Config | Default | External files | Quota-warning script"
-  when:
-    - run_dovecot_external_files['quota_warning_script'] is ansible.builtin.defined
   vars:
     __run_dovecot_external_files_quota_warning_path: >-
       {{ run_dovecot_external_files['quota_warning_script']['path']
@@ -108,8 +111,9 @@
          | ansible.builtin.default(__run_dovecot_external_files_quota_warning_body_default, true) }}
     __run_dovecot_external_files_quota_warning_enabled: >-
       {{ run_dovecot_external_files['quota_warning_script']['enabled'] | ansible.builtin.default(true) }}
+  when:
+    - run_dovecot_external_files['quota_warning_script'] is ansible.builtin.defined
   block:
-
     - name: "Config | Default | External files | Quota-warning script: Render script"
       ansible.builtin.template:
         src: "dovecot-quota-warning.sh.j2"
@@ -117,6 +121,13 @@
         owner: "root"
         group: "root"
         mode: "u=rwx,g=rx,o=rx" # 0755
+      vars:
+        tpl_dovecot_lda_exec_path: "{{ __run_dovecot_dovecot_lda_exec_path }}"
+        tpl_external_files_quota_warning_body: "{{ __run_dovecot_external_files_quota_warning_body }}"
+        tpl_external_files_quota_warning_from: "{{ __run_dovecot_external_files_quota_warning_from }}"
+        tpl_external_files_quota_warning_path: "{{ __run_dovecot_external_files_quota_warning_path }}"
+        tpl_external_files_quota_warning_subject: "{{ __run_dovecot_external_files_quota_warning_subject }}"
+        tpl_managed: "{{ ansible_managed }}"
       when:
         - __run_dovecot_external_files_quota_warning_enabled | ansible.builtin.bool
 
@@ -126,7 +137,6 @@
         state: "absent"
       when:
         - not (__run_dovecot_external_files_quota_warning_enabled | ansible.builtin.bool)
-
 
 ### External files: reconcile the manifest
 
@@ -143,8 +153,7 @@
   loop_control:
     loop_var: "__run_dovecot_stale_path_item"
   notify:
-    - "run_dovecot: reload dovecot.service"
-
+    - "run_dovecot_reload_dovecot"
 
 - name: "Config | Default | External files | Record the created files in the manifest"
   ansible.builtin.copy:
@@ -160,7 +169,6 @@
   when:
     - (__run_dovecot_external_files_owned | ansible.builtin.length) > 0
 
-
 - name: "Config | Default | External files | Remove the manifest (no external files configured)"
   ansible.builtin.file:
     path: "{{ __run_dovecot_external_files_manifest_path }}"
@@ -168,12 +176,9 @@
   when:
     - (__run_dovecot_external_files_owned | ansible.builtin.length) == 0
 
-
 - name: "Config | Default | Ensure handler runs (e.g. config validation/reload) before (re)starting Dovecot after packages were installed"
   ansible.builtin.meta: "flush_handlers"
   when:
     - run_dovecot_service_state in ['enabled', 'running']
-    - (__run_dovecot_package_install_result is ansible.builtin.defined and
-       __run_dovecot_package_install_result is ansible.builtin.changed) or
-      (__run_dovecot_package_install_extras_result is ansible.builtin.defined and
-       __run_dovecot_package_install_extras_result is ansible.builtin.changed)
+    - (__run_dovecot_package_install_result is ansible.builtin.defined and __run_dovecot_package_install_result is ansible.builtin.changed) or
+      (__run_dovecot_package_install_extras_result is ansible.builtin.defined and __run_dovecot_package_install_extras_result is ansible.builtin.changed)

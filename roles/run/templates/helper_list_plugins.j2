@@ -1,3 +1,4 @@
+{% set _ = none -%}
 {#
 SPDX-FileCopyrightText: foundata GmbH <https://foundata.com>
 SPDX-License-Identifier: GPL-3.0-or-later
@@ -9,10 +10,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
    empty entries. Consumed by the Ansible-side assertion that catches unknown
    plugin names (see tasks/setup/install/default.yml). #}
 {% set strings = [] -%}
-{% if run_dovecot_settings['mail_plugins'] is ansible.builtin.defined -%}
-{%   set _ = strings.append(run_dovecot_settings['mail_plugins']) -%}
+{% if tpl_settings['mail_plugins'] is ansible.builtin.defined -%}
+{%   set _ = strings.append(tpl_settings['mail_plugins']) -%}
 {% endif -%}
-{% for key, value in run_dovecot_settings.items() -%}
+{% for key, value in tpl_settings.items() -%}
 {%   if (key is ansible.builtin.string) and (key.startswith('protocol ')) and (value is ansible.builtin.mapping) and (value['mail_plugins'] is ansible.builtin.defined) -%}
 {%     set _ = strings.append(value['mail_plugins']) -%}
 {%   endif -%}

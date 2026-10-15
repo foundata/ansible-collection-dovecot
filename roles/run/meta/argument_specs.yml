@@ -517,7 +517,7 @@ argument_specs:
                   so the path you reference from `run_dovecot_passdbs` stays
                   stable. Override here if you prefer another location.
                 type: "str"
-                default: '/etc/dovecot/passwd.masterusers'
+                default: "/etc/dovecot/passwd.masterusers"
               entries:
                 description: |
                   List of master-user entries to write into the passwd-file.

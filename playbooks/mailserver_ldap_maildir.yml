@@ -33,12 +33,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 ---
-
 - name: "Configure Dovecot (IMAP/LMTP/ManageSieve, LDAP/AD auth)"
   hosts: "{{ dovecot_playbook_hosts | ansible.builtin.default('mailservers') }}"
   become: true
   pre_tasks:
-
     # Deployment-specific variables
     #
     # Everything an operator typically changes per environment is exposed as a
@@ -189,7 +187,6 @@
           credentials are not allowed by this example.
         success_msg: "LDAP transport encryption is enabled."
 
-
     - name: "Check the TLS certificate and key"
       ansible.builtin.stat:
         path: "{{ item }}"
@@ -197,7 +194,6 @@
         - "{{ dovecot_playbook_tls_cert_file }}"
         - "{{ dovecot_playbook_tls_key_file }}"
       register: dovecot_playbook_tls_files
-
 
     - name: "Require readable TLS certificate material"
       ansible.builtin.assert:
@@ -211,7 +207,6 @@
       loop_control:
         loop_var: "dovecot_playbook_tls_file"
         label: "{{ dovecot_playbook_tls_file['item'] }}"
-
 
     # The role provisions the mail storage root and the vmail account, but a few
     # application-level subdirectories the config below references are this playbook's
@@ -230,7 +225,6 @@
         group: "{{ dovecot_playbook_vmail_gid }}"
         mode: "u=rwx,g=rwx,o=" # 0770, matches foundata.dovecot.run
 
-
     - name: "Provision mail subdirectories the Dovecot config references"
       ansible.builtin.file:
         path: "{{ item }}"
@@ -245,7 +239,6 @@
         - "{{ dovecot_playbook_mail_storage_path }}/public/mail/data"
 
   tasks:
-
     - name: "Include the foundata.dovecot.run role"
       ansible.builtin.include_role:
         name: "foundata.dovecot.run"
@@ -305,7 +298,6 @@
           import_environment:
             TZ: ":/etc/localtime"
 
-
           ##### Authentication
 
           # Space separated list of authentication mechanisms, e.g.:
@@ -359,7 +351,6 @@
           # Master users log in as "user*masteruser" (see passdb "masterusers").
           auth_master_user_separator: "*"
 
-
           ##### Logging
 
           # Log failed logins and why they failed.
@@ -377,7 +368,6 @@
           # a user's mail directory. This can help you figure out why Dovecot isn't
           # finding your mails.
           mail_debug: false
-
 
           ##### TLS (a.k.a. SSL)
 
@@ -405,7 +395,6 @@
           # "client" lets the client choose cipher order; modern clients pick well.
           # Compatibility note: 2.4 syntax, was "ssl_prefer_server_ciphers = no"
           ssl_server_prefer_ciphers: "{{ dovecot_playbook_ssl_prefer_ciphers }}"
-
 
           ##### Mail location (location of users' mailboxes)
 
@@ -562,7 +551,7 @@
           # Using "%" rather than a backslash to prevent confusion because backslash
           # is already commonly used as an escape character elsewhere and complicates
           # quoting
-          mailbox_list_storage_escape_char: '%'
+          mailbox_list_storage_escape_char: "%"
 
           # Plugins loaded globally:
           # - acl: shared-folder ACLs.
@@ -578,7 +567,6 @@
           # attractive, but gzip wins on operational ease.
           mail_compress_write_method: "gz"
           compress_gz_level: 6
-
 
           ##### Namespaces
 
@@ -639,30 +627,30 @@
             # Auto-created special-use mailboxes.
             "mailbox Archive":
               auto: "subscribe"
-              special_use: '\Archive'
+              special_use: "\\Archive"
             "mailbox Drafts":
               auto: "subscribe"
-              special_use: '\Drafts'
+              special_use: "\\Drafts"
             "mailbox Junk":
               auto: "no"
-              special_use: '\Junk'
+              special_use: "\\Junk"
             "mailbox Trash":
               auto: "subscribe"
-              special_use: '\Trash'
+              special_use: "\\Trash"
             "mailbox Sent":
               auto: "subscribe"
-              special_use: '\Sent'
+              special_use: "\\Sent"
             # Take care that localized, wrong duplicates at least have the correct
             # flags (auto: "no" == mark, but not auto-create/subscribe)
             "mailbox \"Gelöschte Elemente\"":
               auto: "no"
-              special_use: '\Trash'
+              special_use: "\\Trash"
             "mailbox \"Sent Messages\"":
               auto: "no"
-              special_use: '\Sent'
+              special_use: "\\Sent"
             "mailbox \"Gesendete Elemente\"":
               auto: "no"
-              special_use: '\Sent'
+              special_use: "\\Sent"
 
           # Shared namespace: access other users' mailboxes shared via ACL, visible
           # under "Shared/<owner>/". The owner in the prefix is the "$user" template
@@ -734,7 +722,6 @@
           # subfolders) instead of "Shared/user"
           mail_shared_explicit_inbox: true
 
-
           ##### ACL
           acl_driver: "vfile"
 
@@ -747,7 +734,6 @@
           acl_sharing_map:
             "dict file":
               path: "{{ dovecot_playbook_mail_storage_path }}/db/shared-mailboxes.db"
-
 
           ##### Services
 
@@ -808,7 +794,6 @@
           # Built in pre_tasks (computed unix_listener path), referenced as-is.
           "service quota-status": "{{ dovecot_playbook_service_quota_status }}"
 
-
           ##### Per-protocol plugins
 
           # Dovecot 2.4 merges these per-protocol blocks with the global mail_plugins
@@ -824,7 +809,6 @@
               imap_acl: true # let users manage shared-folder ACLs
               imap_quota: true # expose quota to clients
               imap_sieve: true # run Sieve from IMAP events
-
 
           ##### Sieve
           sieve_plugins:
@@ -851,7 +835,6 @@
           sieve_max_actions: 64
           sieve_max_redirects: 4
           sieve_quota_script_count: 100
-
 
           ##### Quota
 
@@ -890,7 +873,6 @@
           quota_status_nouser: "DUNNO"
           quota_status_overquota: "{{ dovecot_playbook_quota_status_overquota }}"
 
-
           ##### LDAP / Active Directory connection (shared by the ldap pass/userdb)
 
           # All of these are required deployment parameters (no default; asserted
@@ -904,7 +886,6 @@
           # pre_tasks). This bind secret lives inline in the rendered 0600
           # dovecot.conf.
           ldap_auth_dn_password: "{{ dovecot_playbook_ldap_bind_password }}"
-
 
           ##### mbox-specific settings (just for safety, please use other storage formats!)
 
@@ -930,20 +911,17 @@
           mbox_read_locks: "fcntl"
           mbox_write_locks: "fcntl dotlock"
 
+        ##### mdbox-specific settings
 
-          ##### mdbox-specific settings
+        # no mdbox-specific settings right now
 
-          # no mdbox-specific settings right now
+        ##### Mail attachment-specific settings
 
+        # sdbox and mdbox support saving mail attachments to external files, which
+        # also allows single instance storage for them. Other backends don't support
+        # this for now.
 
-          ##### Mail attachment-specific settings
-
-          # sdbox and mdbox support saving mail attachments to external files, which
-          # also allows single instance storage for them. Other backends don't support
-          # this for now.
-
-          # no mail_attachment*-specific settings right now
-
+        # no mail_attachment*-specific settings right now
 
         ##### Password and user databases
 

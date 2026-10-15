@@ -1,3 +1,4 @@
+---
 # Execute the collection role "run" against all driver-created instances.
 #
 # SPDX-FileCopyrightText: foundata GmbH <https://foundata.com>
@@ -10,9 +11,7 @@
     gather_subset:
       - "distribution"
   when:
-    - ansible_facts['distribution'] is not ansible.builtin.defined or
-      ansible_facts['os_family'] is not ansible.builtin.defined
-
+    - ansible_facts['distribution'] is not ansible.builtin.defined or ansible_facts['os_family'] is not ansible.builtin.defined
 
 # These paths must match the dummy cert/key created in tasks/prepare/all.yml.
 # They are stored in __testing_state below so the verify stage can re-use them
@@ -51,7 +50,6 @@
     # by falling through the passwd-file passdb (where it is unknown) to ldap.
     __testing_dovecot_ldap_user: "ldapuser"
     __testing_dovecot_ldap_password: "LdapTest1234__"
-
 
 - name: "Molecule | Converge | Store run_dovecot_* role parameters in __testing_state"
   ansible.builtin.include_tasks:
@@ -160,10 +158,10 @@
           prefix: ""
           "mailbox Drafts":
             auto: "subscribe"
-            special_use: '\Drafts'
+            special_use: "\\Drafts"
           "mailbox Sent":
             auto: "subscribe"
-            special_use: '\Sent'
+            special_use: "\\Sent"
         # Shared + public namespaces (matches the example playbook; gives the acl
         # plugin a meaningful scope).
         "namespace shared":
@@ -371,11 +369,10 @@
 - name: "Molecule | Converge | Include the foundata.dovecot.run role"
   ansible.builtin.include_role:
     name: "foundata.dovecot.run"
-  # vars: All run_dovecot* variables are set as facts and passed this way to
-  #       the role. This enables persisting the values in __testing_state
-  #       and restoring them in later stages (e.g. verify) without manually
-  #       duplicating data across playbooks.
-
+# vars: All run_dovecot* variables are set as facts and passed this way to
+#       the role. This enables persisting the values in __testing_state
+#       and restoring them in later stages (e.g. verify) without manually
+#       duplicating data across playbooks.
 
 # Create the passwd-file login database the passdb/userdb above point at. This
 # is test scaffolding (the role does not manage arbitrary user databases), done
@@ -392,7 +389,6 @@
     # passdb/userdb file must be readable by that group, not root-only.
     group: "dovecot"
     mode: "u=rw,g=r,o=" # 0640, contains a password hash
-
 
 # Directory holding the acl_sharing_map dict file. The unprivileged mail process
 # (running as vmail) writes it, so it must exist and be owned by vmail.

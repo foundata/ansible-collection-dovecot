@@ -1,3 +1,4 @@
+---
 # Check collection role "run" outcomes.
 #
 # SPDX-FileCopyrightText: foundata GmbH <https://foundata.com>
@@ -26,7 +27,6 @@
     tasks_from: "init"
     public: true
 
-
 ## Service state
 
 - name: "Molecule | Verify | Gather service facts"
@@ -37,7 +37,6 @@
     var: ansible_facts['services'][__run_dovecot_service_name] | ansible.builtin.default({})
     verbosity: 3
 
-
 - name: "Molecule | Verify | Assert Dovecot service is running"
   ansible.builtin.assert:
     that:
@@ -45,7 +44,6 @@
       - ansible_facts['services'][__run_dovecot_service_name]['state'] == 'running'
     fail_msg: "Dovecot service '{{ __run_dovecot_service_name }}' is not running."
     success_msg: "Dovecot service '{{ __run_dovecot_service_name }}' is running."
-
 
 ## Base package
 
@@ -60,7 +58,6 @@
     fail_msg: "Expected base package '{{ item }}' is not installed."
     success_msg: "Base package '{{ item }}' is installed."
   loop: "{{ __run_dovecot_packages_install }}"
-
 
 ## Protocol-extras package install path
 
@@ -79,7 +76,6 @@
   when:
     - (ansible_facts['os_family'] | ansible.builtin.lower) == 'debian'
 
-
 - name: "Molecule | Verify | Assert the per-platform sieve protocol extras are installed (Fedora/RHEL)"
   ansible.builtin.assert:
     that:
@@ -91,14 +87,12 @@
   when:
     - (ansible_facts['os_family'] | ansible.builtin.lower) == 'redhat'
 
-
 ## Mail identity (vmail user/group)
 
 - name: "Molecule | Verify | Look up the managed mail group"
   ansible.builtin.getent:
     database: "group"
     key: "{{ run_dovecot_mail_group_name }}"
-
 
 - name: "Molecule | Verify | Assert the managed mail group has the expected GID"
   ansible.builtin.assert:
@@ -110,12 +104,10 @@
       '{{ run_dovecot_mail_group_gid }}'.
     success_msg: "Mail group '{{ run_dovecot_mail_group_name }}' has GID {{ run_dovecot_mail_group_gid }}."
 
-
 - name: "Molecule | Verify | Look up the managed mail user"
   ansible.builtin.getent:
     database: "passwd"
     key: "{{ run_dovecot_mail_user_name }}"
-
 
 - name: "Molecule | Verify | Assert the managed mail user has the expected UID and home"
   ansible.builtin.assert:
@@ -136,7 +128,6 @@
   ansible.builtin.stat:
     path: "{{ run_dovecot_mail_storage_path }}"
   register: __testing_mail_storage_stat
-
 
 - name: "Molecule | Verify | Assert mail storage directory exists with the right ownership and mode"
   ansible.builtin.assert:
@@ -161,7 +152,6 @@
     path: "{{ __run_dovecot_dovecotconf_file_path }}"
   register: __testing_dovecotconf_stat
 
-
 - name: "Molecule | Verify | Assert dovecot.conf exists with expected ownership/mode"
   ansible.builtin.assert:
     that:
@@ -173,12 +163,10 @@
       Stat: {{ __testing_dovecotconf_stat['stat'] | ansible.builtin.default({}) }}
     success_msg: "The dovecot.conf at '{{ __run_dovecot_dovecotconf_file_path }}' exists with expected ownership."
 
-
 - name: "Molecule | Verify | Read dovecot.conf content"
   ansible.builtin.slurp:
     src: "{{ __run_dovecot_dovecotconf_file_path }}"
   register: __testing_dovecotconf_content
-
 
 - name: "Molecule | Verify | Set dovecot.conf content as fact"
   ansible.builtin.set_fact:
@@ -236,14 +224,12 @@
       {{ __testing_dovecotconf_decoded }}
     success_msg: "The rendered dovecot.conf contains all expected directives."
 
-
 ## Tombstone marker in conf.d/
 
 - name: "Molecule | Verify | Stat the conf.d tombstone file"
   ansible.builtin.stat:
     path: "{{ __run_dovecot_confd_tombstone_file_path }}"
   register: __testing_tombstone_stat
-
 
 - name: "Molecule | Verify | Assert the conf.d tombstone file exists"
   ansible.builtin.assert:
@@ -253,14 +239,12 @@
     fail_msg: "The conf.d tombstone file at '{{ __run_dovecot_confd_tombstone_file_path }}' is missing."
     success_msg: "The conf.d tombstone file at '{{ __run_dovecot_confd_tombstone_file_path }}' exists."
 
-
 ## External files: master users
 
 - name: "Molecule | Verify | Stat the master-users passwd-file"
   ansible.builtin.stat:
     path: "/etc/dovecot/passwd.masterusers"
   register: __testing_masterusers_stat
-
 
 - name: "Molecule | Verify | Assert the master-users passwd-file exists and is readable by the auth group"
   ansible.builtin.assert:
@@ -284,7 +268,6 @@
     src: "/etc/dovecot/passwd.masterusers"
   register: __testing_masterusers_content
 
-
 - name: "Molecule | Verify | Assert master-users passwd-file contains the expected entry"
   ansible.builtin.assert:
     that:
@@ -294,14 +277,12 @@
       {{ __testing_masterusers_content['content'] | ansible.builtin.b64decode }}
     success_msg: "The master-users passwd-file contains the expected entry for 'admin'."
 
-
 ## External files: quota-warning script
 
 - name: "Molecule | Verify | Stat the quota-warning script"
   ansible.builtin.stat:
     path: "/usr/local/bin/dovecot-quota-warning.sh"
   register: __testing_quotawarning_stat
-
 
 - name: "Molecule | Verify | Assert the quota-warning script exists, is executable, and references the platform dovecot-lda path"
   ansible.builtin.assert:
@@ -314,16 +295,12 @@
       {{ __testing_quotawarning_stat['stat'] | ansible.builtin.default({}) }}
     success_msg: "The quota-warning script exists at '/usr/local/bin/dovecot-quota-warning.sh' with mode 0755."
 
-
 - name: "Molecule | Verify | Read quota-warning script content"
   ansible.builtin.slurp:
     src: "/usr/local/bin/dovecot-quota-warning.sh"
   register: __testing_quotawarning_content
 
-
 - name: "Molecule | Verify | Assert quota-warning script references the platform-specific dovecot-lda path and the configured Subject"
-  vars:
-    __testing_quotawarning_script: "{{ __testing_quotawarning_content['content'] | ansible.builtin.b64decode }}"
   ansible.builtin.assert:
     that:
       - __run_dovecot_dovecot_lda_exec_path in __testing_quotawarning_script
@@ -342,6 +319,8 @@
       value as a quoted literal that is printed as data.
 
 
+  vars:
+    __testing_quotawarning_script: "{{ __testing_quotawarning_content['content'] | ansible.builtin.b64decode }}"
 - name: "Molecule | Verify | Assert quota-warning script uses the Dovecot 2.4 no-enforcement override (not the removed 2.3 syntax)"
   ansible.builtin.assert:
     that:
@@ -356,7 +335,6 @@
       {{ __testing_quotawarning_content['content'] | ansible.builtin.b64decode }}
     success_msg: "The quota-warning script disables quota enforcement via the Dovecot 2.4 'quota_enforce=no' override."
 
-
 ## Configuration validity (doveconf -n round-trip)
 
 - name: "Molecule | Verify | Validate the overall Dovecot configuration with doveconf -n"
@@ -367,16 +345,15 @@
       # Dovecot 2.4.5 hides ssl_server_key_file without -P ("# hidden, use -P
       # to show it"); the key path assertion below needs the real value.
       - "-P"
-  register: __testing_doveconf_result
-  # -P also reveals the LDAP bind password of the fixture; keep the output
-  # out of the task log.
-  no_log: true
   changed_when:
     - false
   failed_when:
     - __testing_doveconf_result is ansible.builtin.failed
 
-
+  register: __testing_doveconf_result
+  # -P also reveals the LDAP bind password of the fixture; keep the output
+  # out of the task log.
+  no_log: true
 - name: "Molecule | Verify | Assert doveconf -n succeeded and reports our protocols and TLS settings"
   ansible.builtin.assert:
     that:
@@ -398,7 +375,6 @@
       stderr: {{ __testing_doveconf_result['stderr'] | ansible.builtin.default('') }}
     success_msg: "doveconf -n succeeded and reports the expected protocols and TLS settings."
 
-
 ## TLS: real handshakes against the running service
 #
 # Prove that Dovecot actually serves TLS with our dummy certificate, both as
@@ -412,7 +388,6 @@
   ansible.builtin.set_fact:
     __testing_openssl_executable: "/usr/bin/openssl"
 
-
 - name: "Molecule | Verify | TLS handshake (implicit IMAPS on 993)"
   ansible.builtin.command:
     argv:
@@ -422,10 +397,11 @@
       - "127.0.0.1:993"
       - "-crlf"
     stdin: "a1 LOGOUT\n"
-  changed_when: false
-  failed_when: false
+  changed_when:
+    - false
+  failed_when:
+    - false
   register: __testing_imaps_result
-
 
 - name: "Molecule | Verify | Assert the implicit IMAPS (993) handshake presented our dummy cert"
   ansible.builtin.assert:
@@ -440,7 +416,6 @@
       stderr: {{ __testing_imaps_result['stderr'] | ansible.builtin.default('') }}
     success_msg: "Implicit IMAPS (993) completed a TLS handshake serving the dummy certificate."
 
-
 - name: "Molecule | Verify | TLS handshake (STARTTLS on plain IMAP 143)"
   ansible.builtin.command:
     argv:
@@ -452,10 +427,11 @@
       - "imap"
       - "-crlf"
     stdin: "a1 LOGOUT\n"
-  changed_when: false
-  failed_when: false
+  changed_when:
+    - false
+  failed_when:
+    - false
   register: __testing_imap_starttls_result
-
 
 - name: "Molecule | Verify | Assert the IMAP STARTTLS (143) handshake presented our dummy cert"
   ansible.builtin.assert:
@@ -469,7 +445,6 @@
       stdout: {{ __testing_imap_starttls_result['stdout'] | ansible.builtin.default('') }}
       stderr: {{ __testing_imap_starttls_result['stderr'] | ansible.builtin.default('') }}
     success_msg: "IMAP STARTTLS (143) completed a TLS handshake serving the dummy certificate."
-
 
 ## Functional: real IMAP login + LMTP delivery against the passwd-file user
 #
@@ -491,10 +466,11 @@
     # turns these LFs into CRLFs; -quiet drops the handshake noise so stdout
     # carries the IMAP responses (incl. the LOGIN CAPABILITY list).
     stdin: "a1 LOGIN {{ __testing_dovecot_imap_user }} {{ __testing_dovecot_imap_password }}\na2 GETQUOTAROOT INBOX\na3 MYRIGHTS INBOX\na4 LOGOUT\n"
-  changed_when: false
-  failed_when: false
+  changed_when:
+    - false
+  failed_when:
+    - false
   register: __testing_imap_login_result
-
 
 - name: "Molecule | Verify | Assert the IMAP LOGIN and imap-side plugins work"
   ansible.builtin.assert:
@@ -559,9 +535,9 @@
         print("LMTP-DELIVERED-OK")
       - "{{ __testing_dovecot_lmtp_socket }}"
       - "{{ __testing_dovecot_imap_user }}"
-  changed_when: true
+  changed_when:
+    - true
   register: __testing_lmtp_deliver_result
-
 
 - name: "Molecule | Verify | Assert LMTP delivery reported success"
   ansible.builtin.assert:
@@ -575,7 +551,6 @@
       stderr: {{ __testing_lmtp_deliver_result['stderr'] | ansible.builtin.default('') }}
     success_msg: "LMTP delivery to '{{ __testing_dovecot_imap_user }}' succeeded."
 
-
 - name: "Molecule | Verify | Query the mailbox state with doveadm"
   ansible.builtin.command:
     argv:
@@ -586,9 +561,9 @@
       - "{{ __testing_dovecot_imap_user }}"
       - "messages"
       - "INBOX"
-  changed_when: false
+  changed_when:
+    - false
   register: __testing_doveadm_status
-
 
 - name: "Molecule | Verify | Assert the delivered message is in the mailbox"
   ansible.builtin.assert:
@@ -626,9 +601,9 @@
         s.quit()
         print("SMTP-SUBMITTED-OK")
       - "{{ __testing_dovecot_imap_user }}"
-  changed_when: true
+  changed_when:
+    - true
   register: __testing_smtp_submit_result
-
 
 - name: "Molecule | Verify | Poll the mailbox until the Postfix-delivered message arrives"
   ansible.builtin.command:
@@ -641,14 +616,15 @@
       - "INBOX"
       - "subject"
       - "molecule-postfix-e2e"
-  changed_when: false
-  failed_when: false
+  changed_when:
+    - false
+  failed_when:
+    - false
   register: __testing_smtp_search_result
   until:
     - (__testing_smtp_search_result['stdout'] | ansible.builtin.trim | ansible.builtin.length) > 0
   retries: 15
   delay: 1
-
 
 - name: "Molecule | Verify | Assert the SMTP message was delivered end-to-end (Postfix -> Dovecot LMTP)"
   ansible.builtin.assert:
@@ -679,10 +655,11 @@
       - "{{ __run_dovecot_doveadm_exec_path }}"
       - "log"
       - "errors"
-  changed_when: false
-  failed_when: false
+  changed_when:
+    - false
+  failed_when:
+    - false
   register: __testing_doveadm_log_errors
-
 
 - name: "Molecule | Verify | Assert no plugin/module failed to load at runtime"
   ansible.builtin.assert:
@@ -694,7 +671,6 @@
       missing or failed to load):
       {{ __testing_doveadm_log_errors['stdout'] | ansible.builtin.default('') }}
     success_msg: "No plugin/module load failures in the Dovecot error log (all configured plugins loaded)."
-
 
 ## Functional: LDAP-backed login
 #
@@ -709,7 +685,6 @@
     fail_msg: "The test LDAP server (slapd) is not running."
     success_msg: "The test LDAP server (slapd) is running."
 
-
 - name: "Molecule | Verify | Confirm the LDAP demo user exists in the directory"
   ansible.builtin.command:
     argv:
@@ -722,9 +697,9 @@
       - "-LLL"
       - "(uid={{ __testing_dovecot_ldap_user }})"
       - "dn"
-  changed_when: false
+  changed_when:
+    - false
   register: __testing_ldapsearch_result
-
 
 - name: "Molecule | Verify | Assert the LDAP demo user is present"
   ansible.builtin.assert:
@@ -732,7 +707,6 @@
       - ('uid=' ~ __testing_dovecot_ldap_user) in __testing_ldapsearch_result['stdout']
     fail_msg: "The LDAP demo user '{{ __testing_dovecot_ldap_user }}' was not found in the directory."
     success_msg: "The LDAP demo user '{{ __testing_dovecot_ldap_user }}' is present in the directory."
-
 
 - name: "Molecule | Verify | IMAP LOGIN (LDAP user) over implicit TLS (993)"
   ansible.builtin.command:
@@ -744,10 +718,11 @@
       - "-quiet"
       - "-crlf"
     stdin: "a1 LOGIN {{ __testing_dovecot_ldap_user }} {{ __testing_dovecot_ldap_password }}\na2 LOGOUT\n"
-  changed_when: false
-  failed_when: false
+  changed_when:
+    - false
+  failed_when:
+    - false
   register: __testing_ldap_login_result
-
 
 - name: "Molecule | Verify | Assert the LDAP-backed IMAP LOGIN succeeded"
   ansible.builtin.assert:
@@ -759,7 +734,6 @@
       stdout: {{ __testing_ldap_login_result['stdout'] | ansible.builtin.default('') }}
       stderr: {{ __testing_ldap_login_result['stderr'] | ansible.builtin.default('') }}
     success_msg: "LDAP-backed IMAP LOGIN as '{{ __testing_dovecot_ldap_user }}' over TLS (993) succeeded."
-
 
 # Master users: the converge wires a master passdb (run_dovecot_external_files.
 # master_users -> user "admin", password "molecule-test-only") first in the chain
@@ -779,10 +753,11 @@
     # The username carries "*" (a LOGIN list-wildcard) so it must be a quoted
     # IMAP string, not an atom.
     stdin: "a1 LOGIN \"{{ __testing_dovecot_imap_user }}*admin\" \"molecule-test-only\"\na2 LOGOUT\n"
-  changed_when: false
-  failed_when: false
+  changed_when:
+    - false
+  failed_when:
+    - false
   register: __testing_master_login_result
-
 
 - name: "Molecule | Verify | Master-user IMAP LOGIN with the login user's own password (must fail)"
   ansible.builtin.command:
@@ -794,10 +769,11 @@
       - "-quiet"
       - "-crlf"
     stdin: "a1 LOGIN \"{{ __testing_dovecot_imap_user }}*admin\" \"{{ __testing_dovecot_imap_password }}\"\na2 LOGOUT\n"
-  changed_when: false
-  failed_when: false
+  changed_when:
+    - false
+  failed_when:
+    - false
   register: __testing_master_login_negative_result
-
 
 - name: "Molecule | Verify | Assert master-user login works and only with the master password"
   ansible.builtin.assert:
@@ -820,7 +796,6 @@
   when:
     - (ansible_facts['distribution'] | ansible.builtin.lower) == 'debian' # Converge enablesrun_dovecot_repository_manage only on Debian
   block:
-
     - name: "Molecule | Verify | Read the deb822 apt source for repo.dovecot.org"
       ansible.builtin.slurp:
         src: "/etc/apt/sources.list.d/dovecot-ce.sources"
@@ -832,7 +807,8 @@
           - "apt-cache"
           - "policy"
           - "dovecot-core"
-      changed_when: false
+      changed_when:
+        - false
       register: __testing_repo_policy
 
     - name: "Molecule | Verify | Assert Dovecot is installed from the repo.dovecot.org upstream repository"
@@ -864,7 +840,6 @@
 
 - name: "Molecule | Verify | Validate rejection of missing version pins (init-only)"
   block:
-
     - name: "Molecule | Verify | Version pins: save the current settings"
       ansible.builtin.set_fact:
         __testing_saved_settings: "{{ run_dovecot_settings }}"
@@ -891,7 +866,6 @@
           dovecot_config_version and dovecot_storage_version.
 
   rescue:
-
     - name: "Molecule | Verify | Version pins: assert the run failed in the version pin assert"
       ansible.builtin.assert:
         that:
@@ -902,11 +876,9 @@
         success_msg: "Missing Dovecot version pins are rejected by the role's init with an actionable message."
 
   always:
-
     - name: "Molecule | Verify | Version pins: restore the saved settings"
       ansible.builtin.set_fact:
         run_dovecot_settings: "{{ __testing_saved_settings }}"
-
 
 ## Handlers: config changes reload, never restart (integration)
 #
@@ -926,9 +898,9 @@
       - "--property=ExecMainStartTimestamp"
       - "--value"
       - "{{ __run_dovecot_service_name }}"
-  changed_when: false
+  changed_when:
+    - false
   register: __testing_handlers_ts_before
-
 
 - name: "Molecule | Verify | Handlers | Save the current parameters and apply a changed IMAP greeting"
   ansible.builtin.set_fact:
@@ -942,10 +914,8 @@
   ansible.builtin.include_role:
     name: "foundata.dovecot.run"
 
-
 - name: "Molecule | Verify | Handlers | Run the notified handlers (reload expected)"
   ansible.builtin.meta: "flush_handlers"
-
 
 - name: "Molecule | Verify | Handlers | Fetch the IMAP greeting after the reload"
   ansible.builtin.command:
@@ -957,10 +927,11 @@
       - "-quiet"
       - "-crlf"
     stdin: "a1 LOGOUT\n"
-  changed_when: false
-  failed_when: false
+  changed_when:
+    - false
+  failed_when:
+    - false
   register: __testing_handlers_greeting_reload
-
 
 - name: "Molecule | Verify | Handlers | Get ExecMainStartTimestamp after the reload"
   ansible.builtin.command:
@@ -970,9 +941,9 @@
       - "--property=ExecMainStartTimestamp"
       - "--value"
       - "{{ __run_dovecot_service_name }}"
-  changed_when: false
+  changed_when:
+    - false
   register: __testing_handlers_ts_reload
-
 
 - name: "Molecule | Verify | Handlers | Assert the change is live and the service was not restarted"
   ansible.builtin.assert:
@@ -1002,10 +973,8 @@
   ansible.builtin.include_role:
     name: "foundata.dovecot.run"
 
-
 - name: "Molecule | Verify | Handlers | Run the notified handlers (all must be gated off)"
   ansible.builtin.meta: "flush_handlers"
-
 
 - name: "Molecule | Verify | Handlers | Fetch the IMAP greeting after the unmanaged run"
   ansible.builtin.command:
@@ -1017,10 +986,11 @@
       - "-quiet"
       - "-crlf"
     stdin: "a1 LOGOUT\n"
-  changed_when: false
-  failed_when: false
+  changed_when:
+    - false
+  failed_when:
+    - false
   register: __testing_handlers_greeting_unmanaged
-
 
 - name: "Molecule | Verify | Handlers | Get ExecMainStartTimestamp after the unmanaged run"
   ansible.builtin.command:
@@ -1030,9 +1000,9 @@
       - "--property=ExecMainStartTimestamp"
       - "--value"
       - "{{ __run_dovecot_service_name }}"
-  changed_when: false
+  changed_when:
+    - false
   register: __testing_handlers_ts_unmanaged
-
 
 - name: "Molecule | Verify | Handlers | Assert the unmanaged service state keeps handlers away"
   ansible.builtin.assert:
@@ -1049,21 +1019,17 @@
       after: '{{ __testing_handlers_ts_unmanaged['stdout'] }}'.
     success_msg: "Handlers left the unmanaged service alone (runtime configuration and start timestamp unchanged)."
 
-
 - name: "Molecule | Verify | Handlers | Restore the saved parameters"
   ansible.builtin.set_fact:
     run_dovecot_settings: "{{ __testing_handlers_saved_settings }}"
     run_dovecot_service_state: "{{ __testing_handlers_saved_service_state }}"
 
-
 - name: "Molecule | Verify | Handlers | Re-run the foundata.dovecot.run role with the restored parameters"
   ansible.builtin.include_role:
     name: "foundata.dovecot.run"
 
-
 - name: "Molecule | Verify | Handlers | Run the notified handlers again (reload expected)"
   ansible.builtin.meta: "flush_handlers"
-
 
 - name: "Molecule | Verify | Handlers | Get ExecMainStartTimestamp after the restore"
   ansible.builtin.command:
@@ -1073,9 +1039,9 @@
       - "--property=ExecMainStartTimestamp"
       - "--value"
       - "{{ __run_dovecot_service_name }}"
-  changed_when: false
+  changed_when:
+    - false
   register: __testing_handlers_ts_restore
-
 
 - name: "Molecule | Verify | Handlers | Assert the whole sequence never restarted the service"
   ansible.builtin.assert:
@@ -1086,7 +1052,6 @@
       (ExecMainStartTimestamp changed from '{{ __testing_handlers_ts_before['stdout'] }}'
       to '{{ __testing_handlers_ts_restore['stdout'] }}').
     success_msg: "Two reconfigurations and one unmanaged run completed without a single service restart."
-
 
 ## Functional: quota warning fires when a user crosses the threshold
 #
@@ -1112,10 +1077,8 @@
   ansible.builtin.include_role:
     name: "foundata.dovecot.run"
 
-
 - name: "Molecule | Verify | Quota warning | Run the notified handlers (reload expected)"
   ansible.builtin.meta: "flush_handlers"
-
 
 - name: "Molecule | Verify | Quota warning | Deliver two large mails to the LDAP demo user"
   ansible.builtin.command:
@@ -1128,11 +1091,11 @@
       Subject: quota filler {{ item }}
 
       {{ 'quota-filler ' * 1500 }}
-  changed_when: true
+  changed_when:
+    - true
   loop:
     - 1
     - 2
-
 
 - name: "Molecule | Verify | Quota warning | Wait for the warning mail to arrive in the INBOX"
   ansible.builtin.command:
@@ -1145,14 +1108,15 @@
       - "INBOX"
       - "subject"
       - "Quota warning"
-  changed_when: false
-  failed_when: false
+  changed_when:
+    - false
+  failed_when:
+    - false
   register: __testing_quota_warning_search
   until:
     - (__testing_quota_warning_search['stdout'] | ansible.builtin.trim | ansible.builtin.length) > 0
   retries: 10
   delay: 3
-
 
 - name: "Molecule | Verify | Quota warning | Assert the warning mail was delivered despite the full mailbox"
   ansible.builtin.assert:
@@ -1182,9 +1146,9 @@
       - "INBOX"
       - "subject"
       - "Quota warning"
-  changed_when: false
+  changed_when:
+    - false
   register: __testing_quota_warning_subject
-
 
 - name: "Molecule | Verify | Quota warning | Assert the percent placeholder was substituted in the message"
   ansible.builtin.assert:
@@ -1200,7 +1164,6 @@
       (the here-document is quoted so configuration data is never shell-expanded).
     success_msg: "The script substituted the '${PERCENT}' placeholder with the actual fill level."
 
-
 # The script runs as root with a user name that originates from the userdb, so
 # both arguments must be rejected unless they are strictly well-formed. The
 # canary paths would be created if either value were expanded by a shell.
@@ -1210,9 +1173,10 @@
       - "/usr/local/bin/dovecot-quota-warning.sh"
       - "{{ item['percent'] }}"
       - "{{ item['user'] }}"
-  changed_when: false
-  failed_when: false
-  register: __testing_quota_warning_hostile
+  changed_when:
+    - false
+  failed_when:
+    - false
   loop:
     - percent: "90\n; touch /tmp/molecule-quota-canary-percent"
       user: "{{ __testing_dovecot_ldap_user }}"
@@ -1235,17 +1199,16 @@
   loop_control:
     label: "{{ item['label'] }}"
 
-
+  register: __testing_quota_warning_hostile
 - name: "Molecule | Verify | Quota warning | Stat the canary paths of the hostile calls"
   ansible.builtin.stat:
     path: "{{ item }}"
-  register: __testing_quota_warning_canaries
   loop:
     - "/tmp/molecule-quota-canary-percent"
     - "/tmp/molecule-quota-canary-user"
     - "/tmp/molecule-quota-canary-backtick"
 
-
+  register: __testing_quota_warning_canaries
 - name: "Molecule | Verify | Quota warning | Assert hostile arguments are refused without executing anything"
   ansible.builtin.assert:
     that:
@@ -1277,10 +1240,11 @@
       - "dovecot"
       - "-c"
       - "/usr/local/bin/dovecot-quota-warning.sh 90 {{ __testing_dovecot_ldap_user }}"
-  changed_when: false
-  failed_when: false
+  changed_when:
+    - false
+  failed_when:
+    - false
   register: __testing_quota_warning_nonroot
-
 
 - name: "Molecule | Verify | Quota warning | Assert non-root execution is refused with an actionable message"
   ansible.builtin.assert:
@@ -1295,7 +1259,6 @@
       examples' "user = dovecot") lose every warning mail without a trace.
     success_msg: "The quota-warning script refuses non-root execution with exit 77 and an actionable message."
 
-
 - name: "Molecule | Verify | Quota warning | Remove the delivered test mails again"
   ansible.builtin.command:
     argv:
@@ -1306,22 +1269,19 @@
       - "mailbox"
       - "INBOX"
       - "all"
-  changed_when: true
-
+  changed_when:
+    - true
 
 - name: "Molecule | Verify | Quota warning | Restore the saved settings"
   ansible.builtin.set_fact:
     run_dovecot_settings: "{{ __testing_quota_saved_settings }}"
 
-
 - name: "Molecule | Verify | Quota warning | Re-run the foundata.dovecot.run role with the restored settings"
   ansible.builtin.include_role:
     name: "foundata.dovecot.run"
 
-
 - name: "Molecule | Verify | Quota warning | Run the notified handlers again (reload expected)"
   ansible.builtin.meta: "flush_handlers"
-
 
 ## External files: path rename reconciliation
 #
@@ -1334,7 +1294,6 @@
 - name: "Molecule | Verify | External rename | Save the converge external files configuration"
   ansible.builtin.set_fact:
     __testing_extfiles_saved: "{{ run_dovecot_external_files }}"
-
 
 - name: "Molecule | Verify | External rename | Configure renamed external file paths"
   ansible.builtin.set_fact:
@@ -1352,27 +1311,23 @@
   ansible.builtin.include_role:
     name: "foundata.dovecot.run"
 
-
 - name: "Molecule | Verify | External rename | Run the notified handlers"
   ansible.builtin.meta: "flush_handlers"
-
 
 - name: "Molecule | Verify | External rename | Check the file states after the rename"
   ansible.builtin.stat:
     path: "{{ item }}"
-  register: __testing_extfiles_renamed_stat
   loop:
     - "/etc/dovecot/passwd.masterusers"
     - "/usr/local/bin/dovecot-quota-warning.sh"
     - "/etc/dovecot/passwd.masterusers.molecule-renamed"
     - "/usr/local/bin/dovecot-quota-warning-renamed.sh"
 
-
+  register: __testing_extfiles_renamed_stat
 - name: "Molecule | Verify | External rename | Read the external files manifest"
   ansible.builtin.slurp:
     src: "/etc/dovecot/.ansible-external-files"
   register: __testing_extfiles_manifest_slurp
-
 
 - name: "Molecule | Verify | External rename | Assert the previous paths were removed and recorded ones match"
   ansible.builtin.assert:
@@ -1393,32 +1348,27 @@
       path (or a stale manifest entry) survived the path change.
     success_msg: "Files at previous paths were removed and the manifest matches."
 
-
 - name: "Molecule | Verify | External rename | Restore the converge external files configuration"
   ansible.builtin.set_fact:
     run_dovecot_external_files: "{{ __testing_extfiles_saved }}"
-
 
 - name: "Molecule | Verify | External rename | Re-run the foundata.dovecot.run role with the restored paths"
   ansible.builtin.include_role:
     name: "foundata.dovecot.run"
 
-
 - name: "Molecule | Verify | External rename | Run the notified handlers again"
   ansible.builtin.meta: "flush_handlers"
-
 
 - name: "Molecule | Verify | External rename | Check the file states after the restore"
   ansible.builtin.stat:
     path: "{{ item }}"
-  register: __testing_extfiles_restored_stat
   loop:
     - "/etc/dovecot/passwd.masterusers"
     - "/usr/local/bin/dovecot-quota-warning.sh"
     - "/etc/dovecot/passwd.masterusers.molecule-renamed"
     - "/usr/local/bin/dovecot-quota-warning-renamed.sh"
 
-
+  register: __testing_extfiles_restored_stat
 - name: "Molecule | Verify | External rename | Assert the converge state is back"
   ansible.builtin.assert:
     that:
@@ -1428,7 +1378,6 @@
       - not __testing_extfiles_restored_stat['results'][3]['stat']['exists']
     fail_msg: "Restoring the converge paths did not reconcile the renamed files back."
     success_msg: "The converge external file state is back in place."
-
 
 ## Secret redaction in argument validation (canary)
 #
@@ -1440,7 +1389,6 @@
 
 - name: "Molecule | Verify | Redaction: run the role with canary secrets and an invalid argument (must fail)"
   block:
-
     - name: "Molecule | Verify | Redaction: include the role with the canary arguments"
       ansible.builtin.include_role:
         name: "foundata.dovecot.run"
@@ -1461,7 +1409,6 @@
         msg: "The argument validation accepted an invalid run_dovecot_state."
 
   rescue:
-
     - name: "Molecule | Verify | Redaction: check the validation failed and censored the canaries"
       ansible.builtin.assert:
         that:
@@ -1497,9 +1444,7 @@
       user data the uninstall must never touch
     owner: "root"
     group: "root"
-    mode: "u=rw,g=,o="
-
-
+    mode: "u=rw,g=,o=" # 0600
 - name: "Molecule | Verify | Uninstall: run the role with state 'absent'"
   ansible.builtin.include_role:
     name: "foundata.dovecot.run"
@@ -1509,11 +1454,9 @@
     run_dovecot_mail_user_name: "vmail"
     run_dovecot_mail_storage_path: "/srv/vmail"
 
-
 - name: "Molecule | Verify | Uninstall: check the role-managed files are gone"
   ansible.builtin.stat:
     path: "{{ item }}"
-  register: __testing_uninstall_gone_stat
   failed_when:
     - __testing_uninstall_gone_stat['stat']['exists']
   loop:
@@ -1524,7 +1467,7 @@
     - "/etc/dovecot/.ansible-external-files"
     - "/usr/sbin/dovecot"
 
-
+  register: __testing_uninstall_gone_stat
 - name: "Molecule | Verify | Uninstall: check the vmail account and group are gone"
   ansible.builtin.getent:
     database: "{{ item }}"
@@ -1534,18 +1477,16 @@
     - "passwd"
     - "group"
 
-
 - name: "Molecule | Verify | Uninstall: check the mail storage and its data survived"
   ansible.builtin.stat:
     path: "{{ item }}"
-  register: __testing_uninstall_kept_stat
   failed_when:
     - not __testing_uninstall_kept_stat['stat']['exists']
   loop:
     - "/srv/vmail"
     - "/srv/vmail/KEEP-ME-user-data"
 
-
+  register: __testing_uninstall_kept_stat
 - name: "Molecule | Verify | Uninstall: assert the vmail account and group are gone"
   ansible.builtin.assert:
     that:
@@ -1554,7 +1495,6 @@
     fail_msg: >-
       The uninstall left the vmail service account or group behind.
     success_msg: "The uninstall removed the vmail service account and group."
-
 
 - name: "Molecule | Verify | Uninstall: remove the seeded user-data file again"
   ansible.builtin.file:

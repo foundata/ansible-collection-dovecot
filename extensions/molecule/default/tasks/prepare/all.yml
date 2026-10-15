@@ -1,3 +1,4 @@
+---
 # Tasks for the Molecule prepare stage: resources needed by later steps.
 #
 # Provides:
@@ -22,7 +23,6 @@
 # SPDX-FileCopyrightText: foundata GmbH <https://foundata.com>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-
 ### Per-OS parameters
 
 - name: "Molecule | Prepare | Set parameters (Debian)"
@@ -39,7 +39,6 @@
   when:
     - (ansible_facts['os_family'] | ansible.builtin.lower) == 'debian'
 
-
 - name: "Molecule | Prepare | Set parameters (Red Hat / Fedora)"
   ansible.builtin.set_fact:
     __testing_certs_cert_dir: "/etc/pki/tls/certs"
@@ -55,12 +54,10 @@
   when:
     - (ansible_facts['os_family'] | ansible.builtin.lower) == 'redhat'
 
-
 - name: "Molecule | Prepare | Set certificate/key paths"
   ansible.builtin.set_fact:
     __testing_certs_dummycert_pem: "{{ __testing_certs_cert_dir }}/dovecot-dummy-cert.pem"
     __testing_certs_dummykey_pem: "{{ __testing_certs_key_dir }}/dovecot-dummy-key.pem"
-
 
 ### Packages
 
@@ -72,7 +69,6 @@
          + __testing_ldap_client_packages }}
     state: "present"
 
-
 ### Dummy TLS certificate (cert world-readable, key root-only)
 
 - name: "Molecule | Prepare | Certificates: Ensure the private key directory exists"
@@ -83,13 +79,11 @@
     group: "root"
     mode: "u=rwx,g=rx,o=" # 0750
 
-
 - name: "Molecule | Prepare | Certificates: Get info about dummy cert file"
   ansible.builtin.stat:
     path: "{{ __testing_certs_dummycert_pem }}"
     get_checksum: false
   register: __testing_dummycert_stat_result
-
 
 - name: "Molecule | Prepare | Certificates: Create dummy cert and key"
   ansible.builtin.command:
@@ -110,13 +104,12 @@
       - >-
         /C=XX/ST=SomeState/L=SomeCity/O=SomeOrganization/OU=SomeOrganizationalUnit/CN={{
         ansible_facts['fqdn'] | ansible.builtin.default('dovecot.example.com', true) }}
-  register: __testing_dummycert_create_result
-  changed_when:
-    - __testing_dummycert_create_result['rc'] == 0
   when:
     - not __testing_dummycert_stat_result['stat']['exists']
 
-
+  changed_when:
+    - __testing_dummycert_create_result['rc'] == 0
+  register: __testing_dummycert_create_result
 - name: "Molecule | Prepare | Certificates: Set permissions (cert world-readable, key root-only)"
   ansible.builtin.file:
     path: "{{ item['path'] }}"
@@ -129,7 +122,6 @@
   loop_control:
     label: "{{ item['path'] }}"
 
-
 ### OpenLDAP server: install + bootstrap
 
 # Debian family: preseed before installing so slapd self-configures with our
@@ -140,6 +132,9 @@
     question: "{{ item['question'] }}"
     value: "{{ item['value'] }}"
     vtype: "{{ item['vtype'] }}"
+  when:
+    - (ansible_facts['os_family'] | ansible.builtin.lower) == 'debian'
+
   loop:
     - { question: "slapd/no_configuration", value: "false", vtype: "boolean" }
     - { question: "slapd/domain", value: "example.test", vtype: "string" }
@@ -152,22 +147,16 @@
   loop_control:
     label: "{{ item['question'] }}"
   no_log: true
-  when:
-    - (ansible_facts['os_family'] | ansible.builtin.lower) == 'debian'
-
-
 - name: "Molecule | Prepare | LDAP: Install the OpenLDAP server"
   ansible.builtin.package:
     name: "{{ __testing_ldap_server_packages }}"
     state: "present"
-
 
 - name: "Molecule | Prepare | LDAP: Ensure slapd is running"
   ansible.builtin.service:
     name: "slapd"
     state: "started"
     enabled: true
-
 
 # Fedora: the shipped default mdb DB has suffix dc=my-domain,dc=com and no
 # admin password; reconfigure it online via cn=config (EXTERNAL over ldapi).
@@ -190,13 +179,13 @@
       -
       replace: olcRootPW
       olcRootPW: AdminTest1234__
-  changed_when: true
   when:
     - (ansible_facts['os_family'] | ansible.builtin.lower) == 'redhat'
 
-
-# Fedora's default cn=schema ships only the core schema; inetOrgPerson needs
-# cosine + inetorgperson. rc 80 (already loaded) is treated as success.
+  # Fedora's default cn=schema ships only the core schema; inetOrgPerson needs
+  # cosine + inetorgperson. rc 80 (already loaded) is treated as success.
+  changed_when:
+    - true
 - name: "Molecule | Prepare | LDAP: Load cosine + inetorgperson schemas (Fedora)"
   ansible.builtin.command:
     argv:
@@ -207,19 +196,18 @@
       - "ldapi:///"
       - "-f"
       - "{{ __testing_ldap_schema_dir }}/{{ item }}.ldif"
-  loop:
-    - "cosine"
-    - "inetorgperson"
-  register: __testing_ldap_schema_result
+  when:
+    - (ansible_facts['os_family'] | ansible.builtin.lower) == 'redhat'
+
+  # Fedora: create the base entry (Debian's debconf already created it).
   changed_when:
     - __testing_ldap_schema_result['rc'] == 0
   failed_when:
     - __testing_ldap_schema_result['rc'] not in [0, 80]
-  when:
-    - (ansible_facts['os_family'] | ansible.builtin.lower) == 'redhat'
-
-
-# Fedora: create the base entry (Debian's debconf already created it).
+  loop:
+    - "cosine"
+    - "inetorgperson"
+  register: __testing_ldap_schema_result
 - name: "Molecule | Prepare | LDAP: Create the base entry (Fedora)"
   ansible.builtin.command:
     argv:
@@ -237,18 +225,17 @@
       objectClass: organization
       o: Example Test
       dc: example
-  register: __testing_ldap_base_result
+  when:
+    - (ansible_facts['os_family'] | ansible.builtin.lower) == 'redhat'
+
+### Seed the demo user (both families; the admin bind works the same way)
+
   changed_when:
     - __testing_ldap_base_result['rc'] == 0
   failed_when:
     - __testing_ldap_base_result['rc'] not in [0, 68] # 68 == already exists
+  register: __testing_ldap_base_result
   no_log: true
-  when:
-    - (ansible_facts['os_family'] | ansible.builtin.lower) == 'redhat'
-
-
-### Seed the demo user (both families; the admin bind works the same way)
-
 - name: "Molecule | Prepare | LDAP: Load the org unit and demo user"
   ansible.builtin.command:
     argv:
@@ -272,13 +259,12 @@
       uid: ldapuser
       mail: ldapuser@example.test
       userPassword: LdapTest1234__
-  register: __testing_ldap_seed_result
   changed_when:
     - __testing_ldap_seed_result['rc'] == 0
   failed_when:
     - __testing_ldap_seed_result['rc'] not in [0, 68] # 68 == already exists
+  register: __testing_ldap_seed_result
   no_log: true
-
 
 ### Postfix MTA for the end-to-end SMTP -> Postfix -> Dovecot LMTP delivery test
 #
@@ -298,12 +284,11 @@
     content: |
       postmaster: root
       root: root
-    force: false
     owner: "root"
     group: "root"
     mode: "u=rw,g=r,o=r" # 0644
 
-
+    force: false
 - name: "Molecule | Prepare | Configure a Postfix MTA routing the test domain to Dovecot's LMTP"
   ansible.builtin.include_role:
     name: "foundata.postfix.run"

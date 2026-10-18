@@ -101,6 +101,10 @@ The deployment-specific values (mail domain, TLS certificate paths, LDAP/AD
 coordinates, mail storage, quota) are exposed as `dovecot_playbook_*` variables
 you override per environment.
 
+- Install Postfix first: the playbook puts Dovecot's LMTP, auth and
+  quota-status sockets into Postfix's private spool directory, and it stops
+  before changing anything when the Postfix user, group or that directory is
+  missing.
 - Only enabled members of the group `dovecot_playbook_ldap_group_dn` log in
   and receive mail.
 

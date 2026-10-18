@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - >
+    ``mailserver_ldap_maildir.yml`` example playbook - The playbook now checks
+    for the Postfix user, group and private spool directory before changing
+    anything. Without them it installed and configured Dovecot and then failed
+    to start it (``service(lmtp) User doesn't exist: postfix``).

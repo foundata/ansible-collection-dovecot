@@ -24,6 +24,9 @@
 #   quota-status sockets/ports Postfix talks to. You might find
 #   https://foundata.com/en/projects/ansible-collection-postfix/
 #   (foundata.postfix collection) useful to install and manage Postfix.
+#   Install Postfix first: the sockets live in its private spool directory,
+#   and this playbook stops before changing anything when the Postfix user,
+#   group or that directory is missing.
 #
 # - Mail storage provisioning (partition/filesystem/mount of the /srv/vmail
 #   directory) if you e.g. want this to live on a dedicated block device or
@@ -210,6 +213,49 @@
       loop_control:
         loop_var: "dovecot_playbook_tls_file"
         label: "{{ dovecot_playbook_tls_file['item'] }}"
+
+    # Dovecot refuses to start when the owner of a unix_listener does not exist,
+    # and it does not create the Postfix spool directory. Without these checks
+    # the play would install and configure Dovecot first and then fail to start
+    # it ("service(lmtp) User doesn't exist: postfix").
+    - name: "Look up the Postfix user and group"
+      ansible.builtin.getent:
+        database: "{{ item['database'] }}"
+        key: "{{ item['key'] }}"
+        fail_key: false
+      loop:
+        - database: "passwd"
+          key: "{{ dovecot_playbook_postfix_user }}"
+        - database: "group"
+          key: "{{ dovecot_playbook_postfix_group }}"
+      register: dovecot_playbook_postfix_accounts
+
+    - name: "Check the Postfix private spool directory"
+      ansible.builtin.stat:
+        path: "{{ dovecot_playbook_postfix_private_dir }}"
+      register: dovecot_playbook_postfix_private_dir_stat
+
+    - name: "Require Postfix (user, group and private spool directory) before Dovecot"
+      ansible.builtin.assert:
+        that:
+          - >-
+            dovecot_playbook_postfix_accounts['results'][0]['ansible_facts']['getent_passwd'][dovecot_playbook_postfix_user]
+            is not ansible.builtin.none
+          - >-
+            dovecot_playbook_postfix_accounts['results'][1]['ansible_facts']['getent_group'][dovecot_playbook_postfix_group]
+            is not ansible.builtin.none
+          - dovecot_playbook_postfix_private_dir_stat['stat']['exists']
+          - dovecot_playbook_postfix_private_dir_stat['stat']['isdir']
+        quiet: true
+        fail_msg: >-
+          Dovecot's LMTP, auth and quota-status sockets live in
+          {{ dovecot_playbook_postfix_private_dir }} and belong to the user
+          {{ dovecot_playbook_postfix_user }} and the group
+          {{ dovecot_playbook_postfix_group }}; one of them is missing. Install
+          Postfix before running this playbook, or adapt
+          dovecot_playbook_postfix_private_dir, dovecot_playbook_postfix_user and
+          dovecot_playbook_postfix_group.
+        success_msg: "The Postfix user, group and private spool directory exist."
 
     # The role provisions the mail storage root and the vmail account, but a few
     # application-level subdirectories the config below references are this playbook's

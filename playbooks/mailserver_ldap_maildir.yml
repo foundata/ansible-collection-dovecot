@@ -57,7 +57,7 @@
     # keep it in Ansible Vault (an encrypted vault_* variable assigned to
     # dovecot_playbook_ldap_bind_password) and run with --ask-vault-pass or a
     # configured vault id. Checked BEFORE the set_fact below, because the default
-    # passdb filter is built from dovecot_playbook_ldap_group_dn.
+    # LDAP filters are built from dovecot_playbook_ldap_group_dn.
     - name: "Require deployment parameters that have no sensible default (set them; use Vault for the secret)"
       ansible.builtin.assert:
         that:
@@ -130,11 +130,13 @@
         dovecot_playbook_postfix_user: "{{ dovecot_playbook_postfix_user | ansible.builtin.default('postfix') }}"
         dovecot_playbook_postfix_group: "{{ dovecot_playbook_postfix_group | ansible.builtin.default('postfix') }}"
         # LDAP search filters. The defaults reproduce the shipped login/lookup
-        # policy; override them to match your directory schema. The passdb (login)
-        # filter is deliberately STRICTER than the userdb (lookup) filter: only the
-        # primary mail of an enabled, group-member account may LOG IN, while
-        # delivery and administrative lookups also resolve aliases (proxyAddresses)
-        # and the sAMAccountName - so aliases receive mail but are NOT alternative
+        # policy; override them to match your directory schema. Both match only
+        # enabled accounts in dovecot_playbook_ldap_group_dn (nested groups
+        # included), so other accounts neither log in nor receive mail. The
+        # passdb (login) filter is deliberately STRICTER than the userdb (lookup)
+        # filter: only the primary mail may LOG IN, while delivery and
+        # administrative lookups also resolve aliases (proxyAddresses) and the
+        # sAMAccountName - so aliases receive mail but are NOT alternative
         # usernames.
         #
         # Built via Jinja concatenation only to keep each YAML line short and to
@@ -149,7 +151,8 @@
           {{ dovecot_playbook_ldap_userdb_filter | ansible.builtin.default(
                '(&(objectClass=user)(objectCategory=person)'
                ~ '(|(sAMAccountName=%{user})(mail=%{user})(proxyAddresses=smtp:%{user})(proxyAddresses=SMTP:%{user}))'
-               ~ '(!(userAccountControl:1.2.840.113556.1.4.803:=2)))', true) }}
+               ~ '(!(userAccountControl:1.2.840.113556.1.4.803:=2))'
+               ~ '(memberOf:1.2.840.113556.1.4.1941:=' ~ dovecot_playbook_ldap_group_dn ~ '))', true) }}
 
     # The Postfix-facing sockets (LMTP delivery, SASL auth, quota policy) live in
     # Postfix's private spool dir. The unix_listener PATH is part of the block KEY,
@@ -1014,7 +1017,8 @@
             # to match your schema). Default is broader than the login filter: it
             # also resolves the canonical name and alias/old addresses
             # (sAMAccountName, proxyAddresses, both cases) for delivery and
-            # administrative lookups.
+            # administrative lookups, for the same enabled group members. Mail
+            # to anyone else is refused at RCPT time ("User doesn't exist").
             userdb_ldap_filter: "{{ dovecot_playbook_ldap_userdb_filter }}"
             # Static identity for every user (one shared vmail uid/gid); home is
             # derived from the AD mail attribute (lowercased); "user" canonicalizes

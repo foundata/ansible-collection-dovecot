@@ -101,6 +101,9 @@ The deployment-specific values (mail domain, TLS certificate paths, LDAP/AD
 coordinates, mail storage, quota) are exposed as `dovecot_playbook_*` variables
 you override per environment.
 
+- Only enabled members of the group `dovecot_playbook_ldap_group_dn` log in
+  and receive mail.
+
 Once the collection is installed
 (`ansible-galaxy collection install foundata.dovecot`), you can run the shipped
 playbook directly by its fully qualified name. Point it at your own inventory,

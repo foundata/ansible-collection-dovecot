@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - >
+    ``mailserver_ldap_maildir.yml`` example playbook - The default userdb
+    filter now also requires membership in ``dovecot_playbook_ldap_group_dn``,
+    like the login filter. Before, Dovecot accepted mail over LMTP for enabled
+    directory accounts outside that group, although they could not log in to
+    read it. Such recipients are now refused at RCPT time. To deliver to them
+    again, set ``dovecot_playbook_ldap_userdb_filter`` without the group
+    condition.

@@ -1,0 +1,9 @@
+---
+minor_changes:
+  - >
+    ``mailserver_ldap_maildir.yml`` example playbook - The new optional
+    variable ``dovecot_playbook_ldap_ca_cert`` takes the PEM certificate of a
+    private CA that issued the LDAP server's certificate and adds it to the
+    system trust store, then restarts Dovecot when it changed. Dovecot's own
+    ``ssl_client_ca_file`` applies to LDAP connections only from Dovecot 2.4.3
+    on; 2.4.1, as shipped by Debian 13, ignores it there.

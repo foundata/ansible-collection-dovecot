@@ -123,6 +123,12 @@
         # is explicitly enabled.
         dovecot_playbook_ldap_starttls: >-
           {{ dovecot_playbook_ldap_starttls | ansible.builtin.default(false) | ansible.builtin.bool }}
+        # PEM certificate of the CA that issued the LDAP server's certificate,
+        # for a private CA such as an Active Directory Certificate Services root
+        # that the system trust store does not know yet. It is added to the
+        # system trust store, which Dovecot's LDAP connections use. Empty: the
+        # trust store stays as it is.
+        dovecot_playbook_ldap_ca_cert: "{{ dovecot_playbook_ldap_ca_cert | ansible.builtin.default('') }}"
         # Listener ports (standard defaults; rarely changed).
         dovecot_playbook_imap_port: "{{ dovecot_playbook_imap_port | ansible.builtin.default(143) }}"
         dovecot_playbook_imaps_port: "{{ dovecot_playbook_imaps_port | ansible.builtin.default(993) }}"
@@ -925,7 +931,10 @@
           ##### LDAP / Active Directory connection (shared by the ldap pass/userdb)
 
           # All of these are required deployment parameters (no default; asserted
-          # in pre_tasks). Set them via inventory/group_vars/-e.
+          # in pre_tasks). Set them via inventory/group_vars/-e. The server's
+          # certificate has to chain to a CA in the system trust store; give a
+          # private CA in dovecot_playbook_ldap_ca_cert (see post_tasks for why
+          # this example does not set ssl_client_ca_file).
           ldap_uris: "{{ dovecot_playbook_ldap_uri }}"
           ldap_starttls: "{{ dovecot_playbook_ldap_starttls }}"
           ldap_base: "{{ dovecot_playbook_ldap_base }}"
@@ -1096,3 +1105,55 @@
             path: "{{ dovecot_playbook_quota_warning_script_path }}"
             from: "{{ dovecot_playbook_quota_warning_from }}"
             subject: "{{ dovecot_playbook_quota_warning_subject }}"
+
+  post_tasks:
+    # Trust in the LDAP server's certificate comes from the system trust store
+    # on every Dovecot 2.4 release. Dovecot's own ssl_client_ca_file reaches
+    # LDAP connections only from 2.4.3 on; 2.4.1 (Debian 13) ignores it there,
+    # and LDAP lookups then fail with "Aborting (timeout), we're not connected
+    # to LDAP server". Hence the system trust store for a private CA. This runs
+    # after the role, so the handlers below can restart an installed Dovecot.
+    - name: "Install the LDAP server's CA certificate into the system trust store"
+      when:
+        - (dovecot_playbook_ldap_ca_cert | ansible.builtin.length) > 0
+      block:
+        - name: "Gather the OS family (location of the system trust store)"
+          ansible.builtin.setup:
+            gather_subset:
+              - "!all"
+              - "!min"
+              - "distribution"
+          when:
+            - ansible_facts['os_family'] is not ansible.builtin.defined
+
+        - name: "Install the CA certificate tools"
+          ansible.builtin.package:
+            name: "ca-certificates"
+            state: "present"
+
+        - name: "Add the CA certificate to the system trust store sources"
+          ansible.builtin.copy:
+            content: "{{ dovecot_playbook_ldap_ca_cert | ansible.builtin.trim ~ '\n' }}"
+            dest: >-
+              {{ (ansible_facts['os_family'] == 'RedHat')
+                 | ansible.builtin.ternary('/etc/pki/ca-trust/source/anchors/dovecot-ldap-ca.pem',
+                                           '/usr/local/share/ca-certificates/dovecot-ldap-ca.crt') }}
+            owner: "root"
+            group: "root"
+            mode: "u=rw,g=r,o=r" # 0644
+          # Dovecot's LDAP connections read the trust store when its processes
+          # start, hence the role's restart handler after the rebuild.
+          notify:
+            - "dovecot_playbook_rebuild_trust_store"
+            - "run_dovecot_restart_dovecot"
+
+  handlers:
+    - name: "Rebuild the system trust store"
+      ansible.builtin.command:
+        argv: >-
+          {{ (ansible_facts['os_family'] == 'RedHat')
+             | ansible.builtin.ternary(['update-ca-trust', 'extract'], ['update-ca-certificates']) }}
+      changed_when:
+        - true
+      listen:
+        - "dovecot_playbook_rebuild_trust_store"

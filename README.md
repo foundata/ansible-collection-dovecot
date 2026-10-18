@@ -107,6 +107,9 @@ you override per environment.
   missing.
 - Only enabled members of the group `dovecot_playbook_ldap_group_dn` log in
   and receive mail.
+- When a private CA issued the directory's certificate, pass it in
+  `dovecot_playbook_ldap_ca_cert`; the playbook adds it to the system trust
+  store.
 
 Once the collection is installed
 (`ansible-galaxy collection install foundata.dovecot`), you can run the shipped

@@ -13,6 +13,7 @@ argument_specs:
   # foundata.dovecot/roles/run/tasks/main.yml entry point
   main:
     short_description: "Main entry point for the foundata.dovecot.run role."
+    version_added: "1.0.0"
     description: |
       Manage Dovecot, a secure and high-performance open-source IMAP and POP3
       server

@@ -45,9 +45,8 @@ secure and high-performance open-source IMAP and POP3 server (mail server).
 
 The primary role in this collection installs and maintains Dovecot 2.4+,
 including its package source, service, mail storage account, configuration
-settings, authentication databases, and supporting files.
-[Its `README.md`](./roles/run/README.md) covers configuration, usage examples,
-and more:
+settings, authentication databases, and supporting files. [Its
+`README.md`](./roles/run/README.md) covers configuration and usage examples.
 
 <!-- ANSIBLE DOCSMITH TOC-FULL run START -->
 - [Ansible role: `foundata.dovecot.run`](./roles/run/README.md#ansible-role-foundatadovecotrun)

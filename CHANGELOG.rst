@@ -4,6 +4,27 @@ foundata.dovecot Ansible collection Release Notes
 
 .. contents:: Topics
 
+v1.3.0
+======
+
+Minor Changes
+-------------
+
+- Add role-prefixed handler topics and use them for internal notifications. Retain the previous topics as migration aliases until version 2.0.0.
+- Add the handler topic run_dovecot_reload_dovecot as the replacement for "run_dovecot: reload dovecot.service".
+- Add the handler topic run_dovecot_restart_dovecot as the replacement for "run_dovecot: restart dovecot.service".
+- ``mailserver_ldap_maildir.yml`` example playbook - The new optional variable ``dovecot_playbook_ldap_ca_cert`` takes the PEM certificate of a private CA that issued the LDAP server's certificate and adds it to the system trust store, then restarts Dovecot when it changed. Dovecot's own ``ssl_client_ca_file`` applies to LDAP connections only from Dovecot 2.4.3 on; 2.4.1, as shipped by Debian 13, ignores it there.
+
+Bugfixes
+--------
+
+- Check the minimum ansible-core version before gathering role facts so unsupported versions fail with the intended diagnostic.
+- Limit automatic fact gathering to each role's declared subsets while retaining missing-fact recovery and reuse of cached facts.
+- The declared ansible-core minimum is corrected from 2.16 to 2.19. The roles write Jinja's own filters and tests as ``ansible.builtin.<name>``, which ansible-core resolves from 2.19 only; on 2.16 to 2.18 every run failed at the first such expression, so no working installation is affected.
+- ``mailserver_ldap_maildir.yml`` example playbook - The default userdb filter now also requires membership in ``dovecot_playbook_ldap_group_dn``, like the login filter. Before, Dovecot accepted mail over LMTP for enabled directory accounts outside that group, although they could not log in to read it. Such recipients are now refused at RCPT time. To deliver to them again, set ``dovecot_playbook_ldap_userdb_filter`` without the group condition.
+- ``mailserver_ldap_maildir.yml`` example playbook - The playbook now checks for the Postfix user, group and private spool directory before changing anything. Without them it installed and configured Dovecot and then failed to start it (``service(lmtp) User doesn't exist: postfix``).
+- ``run`` role - Enabling ``run_dovecot_repository_manage`` on Debian no longer fails on ansible-core 2.19. The role now installs ``python3-debian`` itself instead of using the ``install_python_debian`` option of ``ansible.builtin.deb822_repository``, which ansible-core added in 2.20.
+
 v1.2.0
 ======
 

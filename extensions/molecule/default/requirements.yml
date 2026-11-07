@@ -8,6 +8,8 @@
 roles: []
 
 collections:
+  # The LMTP fixture is configured by foundata.postfix.run.
+  - "foundata.postfix"
   # Container platforms (type: "podman")
   - "containers.podman"
   # VM platforms (type: "libvirt"): SSH keypair generation

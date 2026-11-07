@@ -12,16 +12,12 @@
     - run_dovecot_service_state in ['enabled', 'running']
   listen:
     - "run_dovecot_restart_dovecot"
-    # Migration alias; remove in 2.0.0.
-    - "run_dovecot: restart dovecot.service"
 - name: "Handlers | Gather service facts (reload pre-check)"
   ansible.builtin.service_facts:
   when:
     - run_dovecot_service_state in ['enabled', 'running']
   listen:
     - "run_dovecot_reload_dovecot"
-    # Migration alias; remove in 2.0.0.
-    - "run_dovecot: reload dovecot.service"
 - name: "Handlers | Dovecot service reload"
   ansible.builtin.systemd_service:
     name: "{{ __run_dovecot_service_name }}"
@@ -31,5 +27,3 @@
     - (ansible_facts['services'][__run_dovecot_service_name]['state'] | ansible.builtin.default('')) == 'running'
   listen:
     - "run_dovecot_reload_dovecot"
-    # Migration alias; remove in 2.0.0.
-    - "run_dovecot: reload dovecot.service"

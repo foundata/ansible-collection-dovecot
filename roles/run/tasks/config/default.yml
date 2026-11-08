@@ -175,10 +175,3 @@
     state: "absent"
   when:
     - (__run_dovecot_external_files_owned | ansible.builtin.length) == 0
-
-- name: "Config | Default | Ensure handler runs (e.g. config validation/reload) before (re)starting Dovecot after packages were installed"
-  ansible.builtin.meta: "flush_handlers"
-  when:
-    - run_dovecot_service_state in ['enabled', 'running']
-    - (__run_dovecot_package_install_result is ansible.builtin.defined and __run_dovecot_package_install_result is ansible.builtin.changed) or
-      (__run_dovecot_package_install_extras_result is ansible.builtin.defined and __run_dovecot_package_install_extras_result is ansible.builtin.changed)

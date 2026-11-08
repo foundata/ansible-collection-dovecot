@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - >-
+    run role - No longer flush all pending play handlers after a package
+    installation, preserving the order of unrelated handlers of the calling
+    play. A service that the package started with its default configuration
+    now gets restarted at the end of the play, as after any other
+    configuration change.

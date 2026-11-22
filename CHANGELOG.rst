@@ -4,6 +4,19 @@ foundata.dovecot Ansible collection Release Notes
 
 .. contents:: Topics
 
+v1.3.1
+======
+
+Minor Changes
+-------------
+
+- Remove the previous handler topics ahead of the announced version 2.0.0: "run_dovecot: restart dovecot.service" and "run_dovecot: reload dovecot.service". Notify the role-prefixed topics instead. We decided that this is a non-breaking change: the topics are role internals, and their use by third parties is very unlikely.
+
+Bugfixes
+--------
+
+- run role - No longer flush all pending play handlers after a package installation, preserving the order of unrelated handlers of the calling play. A service that the package started with its default configuration now gets restarted at the end of the play, as after any other configuration change.
+
 v1.3.0
 ======
 
